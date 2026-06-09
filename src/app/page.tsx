@@ -907,7 +907,7 @@ export default function CoveredCallAnalyzer() {
           </aside>
 
           {/* Scrolling Content Area */}
-          <section className="lg:col-span-9 space-y-12 md:space-y-20">
+          <section className="lg:col-span-6 space-y-12 md:space-y-20">
             {error && (
               <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-500 text-xs font-bold uppercase tracking-widest text-center justify-center">
                  <Info size={14} />
@@ -957,6 +957,21 @@ export default function CoveredCallAnalyzer() {
               </div>
             )}
           </section>
+
+          {/* AI Assistant Sidebar */}
+          <aside className="lg:col-span-3 lg:sticky lg:top-[120px] max-h-[calc(100vh-160px)] z-10 w-full mb-12 lg:mb-0">
+            <LLMChatbot 
+              setTicker={setTicker}
+              setCapital={setCapitalInput}
+              setMinMonths={setMinMonths}
+              setMaxMonths={setMaxMonths}
+              setMaxDelta={setMaxDelta}
+              setStrikeFilter={setStrikeFilter}
+              addCustomFilter={(filter) => setCustomFilters(prev => [...prev.filter(f => f.id !== filter.id), filter])}
+              setSortConfig={setGlobalSortConfig}
+              triggerFetch={() => setNeedsFetch(true)}
+            />
+          </aside>
         </div>
       </main>
 
@@ -1013,17 +1028,6 @@ export default function CoveredCallAnalyzer() {
             .sort((a, b) => new Date(a as string).getTime() - new Date(b as string).getTime()) as string[]}
         />
       )}
-      <LLMChatbot 
-        setTicker={setTicker}
-        setCapital={setCapitalInput}
-        setMinMonths={setMinMonths}
-        setMaxMonths={setMaxMonths}
-        setMaxDelta={setMaxDelta}
-        setStrikeFilter={setStrikeFilter}
-        addCustomFilter={(filter) => setCustomFilters(prev => [...prev.filter(f => f.id !== filter.id), filter])}
-        setSortConfig={setGlobalSortConfig}
-        triggerFetch={() => setNeedsFetch(true)}
-      />
     </div>
   );
 }
