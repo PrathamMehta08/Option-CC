@@ -34,7 +34,7 @@ import {
 } from 'recharts';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-
+import LLMChatbot from '../components/LLMChatbot';
 // --- Utils ---
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -63,6 +63,12 @@ interface OptionData {
   totalCapitalRequired: number;
   totalPremiumReceived: number;
   annualizedReturn: number;
+}
+
+interface CustomFilter {
+  id: string;
+  name: string;
+  code: string;
 }
 
 interface ApiResponse {
@@ -118,8 +124,14 @@ const AnalysisChart = memo(({ title, icon: Icon, data, xAxisKey, xAxisName, yAxi
 });
 AnalysisChart.displayName = 'AnalysisChart';
 
-const ResultsTable = memo(({ options, title, count }: { options: OptionData[], title: string, count?: number }) => {
-  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: null, direction: null });
+const ResultsTable = memo(({ 
+  options, title, count, externalSortConfig, onExternalSortChange 
+}: { 
+  options: OptionData[], title: string, count?: number, 
+  externalSortConfig?: SortConfig, onExternalSortChange?: (config: SortConfig) => void 
+}) => {
+  const [localSortConfig, setLocalSortConfig] = useState<SortConfig>({ key: null, direction: null });
+  const sortConfig = externalSortConfig !== undefined ? externalSortConfig : localSortConfig;
 
   const handleSort = (key: keyof OptionData) => {
     let direction: 'asc' | 'desc' | null = 'desc';
@@ -128,7 +140,11 @@ const ResultsTable = memo(({ options, title, count }: { options: OptionData[], t
     } else if (sortConfig.key === key && sortConfig.direction === 'asc') {
       direction = null;
     }
-    setSortConfig({ key, direction });
+    if (onExternalSortChange) {
+      onExternalSortChange({ key, direction });
+    } else {
+      setLocalSortConfig({ key, direction });
+    }
   };
 
   const processedOptions = useMemo(() => {
@@ -540,6 +556,9 @@ export default function CoveredCallAnalyzer() {
   const [strikeFilter, setStrikeFilter] = useState<[number, number]>([0, 5000]);
   const [selectedExps, setSelectedExps] = useState<string[]>([]);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [customFilters, setCustomFilters] = useState<CustomFilter[]>([]);
+  const [needsFetch, setNeedsFetch] = useState(false);
+  const [globalSortConfig, setGlobalSortConfig] = useState<SortConfig>({ key: null, direction: null });
 
   // Custom Keyboard State
   // Custom Keyboard Handlers
@@ -609,6 +628,13 @@ export default function CoveredCallAnalyzer() {
     fetchOptions();
   }, []);
 
+  useEffect(() => {
+    if (needsFetch) {
+      fetchOptions();
+      setNeedsFetch(false);
+    }
+  }, [needsFetch, fetchOptions]);
+
   // Reset expirations when MTE filters change
   useEffect(() => {
     if (data?.options) {
@@ -623,9 +649,23 @@ export default function CoveredCallAnalyzer() {
       const strikeMatch = opt.strike >= deferredStrikeFilter[0] && opt.strike <= deferredStrikeFilter[1];
       const expMatch = deferredSelectedExps.includes(opt.expiration);
       const affordableMatch = opt.maxContracts > 0;
-      return strikeMatch && expMatch && affordableMatch;
+      
+      let customMatch = true;
+      if (customFilters.length > 0) {
+        for (const f of customFilters) {
+          try {
+            const fn = new Function('opt', `return ${f.code}`);
+            if (!fn(opt)) { customMatch = false; break; }
+          } catch (e) {
+            console.error('Filter eval error:', e);
+            customMatch = false; break;
+          }
+        }
+      }
+
+      return strikeMatch && expMatch && affordableMatch && customMatch;
     });
-  }, [data, deferredStrikeFilter, deferredSelectedExps]);
+  }, [data, deferredStrikeFilter, deferredSelectedExps, customFilters]);
 
   return (
     <div className="min-h-screen font-sans antialiased text-white selection:bg-emerald-500/30 pb-16">
@@ -754,6 +794,19 @@ export default function CoveredCallAnalyzer() {
               <section className="space-y-6">
                 <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 border-b border-zinc-900 pb-2">Analysis Parameters</h2>
                 
+                {customFilters.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {customFilters.map(f => (
+                      <span key={f.id} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-[10px] font-bold uppercase tracking-widest rounded-lg">
+                        {f.name}
+                        <button onClick={() => setCustomFilters(prev => prev.filter(cf => cf.id !== f.id))} className="hover:text-white transition-colors">
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                
                 <div className="space-y-8">
                   <div className="space-y-3">
                     <label className="text-xs font-semibold text-zinc-400">Ticker Symbol</label>
@@ -865,7 +918,7 @@ export default function CoveredCallAnalyzer() {
             {data && filteredOptions.length > 0 ? (
               <div className="space-y-16 md:space-y-24">
                 {/* Top Picks */}
-                <ResultsTable title="Best Covered Call Opportunities" options={filteredOptions.slice(0, 10)} />
+                <ResultsTable title="Best Covered Call Opportunities" options={filteredOptions.slice(0, 10)} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} />
 
                 {/* Charts */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-10 text-white font-sans">
@@ -874,7 +927,7 @@ export default function CoveredCallAnalyzer() {
                 </div>
 
                 {/* Full Results */}
-                <ResultsTable title="Full Market Scan Results" options={filteredOptions} count={filteredOptions.length} />
+                <ResultsTable title="Full Market Scan Results" options={filteredOptions} count={filteredOptions.length} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} />
               </div>
             ) : (
               <div className="h-[40vh] md:h-[50vh] flex flex-col items-center justify-center space-y-6 md:space-y-10 rounded-[2rem] border border-zinc-900 bg-zinc-950/20 px-8 text-center bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-zinc-900/40 via-transparent to-transparent">
@@ -960,6 +1013,17 @@ export default function CoveredCallAnalyzer() {
             .sort((a, b) => new Date(a as string).getTime() - new Date(b as string).getTime()) as string[]}
         />
       )}
+      <LLMChatbot 
+        setTicker={setTicker}
+        setCapital={setCapitalInput}
+        setMinMonths={setMinMonths}
+        setMaxMonths={setMaxMonths}
+        setMaxDelta={setMaxDelta}
+        setStrikeFilter={setStrikeFilter}
+        addCustomFilter={(filter) => setCustomFilters(prev => [...prev.filter(f => f.id !== filter.id), filter])}
+        setSortConfig={setGlobalSortConfig}
+        triggerFetch={() => setNeedsFetch(true)}
+      />
     </div>
   );
 }
