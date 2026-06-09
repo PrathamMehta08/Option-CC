@@ -27,6 +27,7 @@ export default function LLMChatbot({
   setSortConfig,
   triggerFetch,
 }: LLMChatbotProps) {
+  const [isOpen, setIsOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { messages, input, handleInputChange, handleSubmit, status, error, addToolResult } = useChat({
@@ -93,7 +94,32 @@ export default function LLMChatbot({
   }, [messages]);
 
   return (
-    <div className="w-full h-full min-h-[500px] max-h-[calc(100vh-160px)] bg-zinc-950/50 border border-zinc-800 rounded-2xl flex flex-col overflow-hidden shadow-xl">
+    <>
+      {/* Floating Action Button */}
+      <button
+        onClick={() => setIsOpen(true)}
+        className={`fixed bottom-6 right-6 hidden lg:flex items-center justify-center w-14 h-14 bg-emerald-500 text-black rounded-full shadow-lg hover:bg-emerald-400 z-50`}
+        style={{
+          transition: 'transform 0.2s ease, opacity 0.2s ease',
+          transform: isOpen ? 'scale(0)' : 'scale(1)',
+          opacity: isOpen ? 0 : 1,
+          pointerEvents: isOpen ? 'none' : 'auto',
+        }}
+      >
+        <MessageSquare size={24} />
+      </button>
+
+      {/* Chat Window */}
+      <div
+        className={`fixed bottom-6 right-6 w-[400px] h-[600px] bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl flex-col overflow-hidden z-50`}
+        style={{
+          display: 'flex',
+          transition: 'opacity 0.3s ease, transform 0.3s ease',
+          opacity: isOpen ? 1 : 0,
+          transform: isOpen ? 'translateY(0)' : 'translateY(32px)',
+          pointerEvents: isOpen ? 'auto' : 'none',
+        }}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50 shrink-0">
           <div className="flex items-center gap-2">
@@ -105,6 +131,12 @@ export default function LLMChatbot({
               <p className="text-[10px] text-zinc-400 uppercase tracking-wider">Covered Calls</p>
             </div>
           </div>
+          <button
+            onClick={() => setIsOpen(false)}
+            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full transition-colors"
+          >
+            <X size={20} />
+          </button>
         </div>
 
         {/* Messages */}
@@ -188,6 +220,7 @@ export default function LLMChatbot({
             </button>
           </form>
         </div>
-    </div>
+      </div>
+    </>
   );
 }
