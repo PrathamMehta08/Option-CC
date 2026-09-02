@@ -134,7 +134,9 @@ export default function OptionAnalyzer() {
         // underlying changed and the old bounds are meaningless.
         if (tickerChanged) {
           const strikes = json.options.map((o) => o.strike);
-          setStrikeFilter([Math.min(...strikes), Math.max(...strikes)]);
+          // Whole numbers, widened outwards, to match the slider's track bounds
+          // — a fractional bound leaves the thumb unable to reach its own end.
+          setStrikeFilter([Math.floor(Math.min(...strikes)), Math.ceil(Math.max(...strikes))]);
         }
       }
     } catch {

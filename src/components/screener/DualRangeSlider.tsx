@@ -5,6 +5,23 @@ import React, { useState, useEffect, memo } from 'react';
 /** Must match .dual-range-input::-webkit-slider-thumb width in globals.css. */
 const THUMB = 24;
 
+/**
+ * Whole-number track bounds, widened outwards.
+ *
+ * Strikes are frequently fractional ($217.50), but the change handlers
+ * parseInt whatever the input reports — so against a track starting at 217.5
+ * the first step yields 217, below min, and the thumb leaves the track.
+ * Widening rather than narrowing also means no contract falls outside.
+ */
+export function trackBounds(min: number, max: number): [number, number] {
+  return [Math.floor(Math.min(min, max)), Math.ceil(Math.max(min, max))];
+}
+
+/** Where a value sits on the track. Values outside it pin to the nearest end. */
+export function clampToTrack(value: number, low: number, high: number): number {
+  return Math.min(high, Math.max(low, value));
+}
+
 export const DualRangeSlider = memo(({ min, max, value, onChange, label, unit = "$" }: { min: number, max: number, value: [number, number], onChange: (val: [number, number]) => void, label?: string, unit?: string }) => {
   const [localValue, setLocalValue] = useState(value);
 
@@ -28,20 +45,42 @@ export const DualRangeSlider = memo(({ min, max, value, onChange, label, unit = 
     return () => clearTimeout(timer);
   }, [localValue, onChange, value]);
 
-  const pct = (v: number) => ((v - Math.min(min, max)) / (Math.max(min, max) - Math.min(min, max) || 1)) * 100;
-  const lowPct = pct(localValue[0]);
-  const highPct = pct(localValue[1]);
+  /**
+   * The track bounds are whole numbers, widened outwards.
+   *
+   * Strikes are frequently fractional ($217.50). The change handlers parseInt
+   * whatever the input reports, so against a track starting at 217.5 the first
+   * step yields 217 — below min — and the thumb renders off the end of the
+   * track with a negative fill. Flooring the low bound and ceiling the high one
+   * makes every reachable integer land inside the range, and widening rather
+   * than narrowing means no contract falls outside the filter.
+   */
+  const [minVal, maxVal] = trackBounds(min, max);
 
-  const minVal = Math.min(min, max);
-  const maxVal = Math.max(min, max);
+  const clamp = (v: number) => clampToTrack(v, minVal, maxVal);
+
+  /**
+   * The slider is clamped for display only; the value it was handed is left
+   * alone. The assistant answers "strike under 400" with minStrike 0, which is
+   * a legitimate way to say "no lower bound" and filters correctly — but 0 is
+   * not a position on a track that starts at 230. Rendering the clamped value
+   * keeps the thumb on the track and the fill in step with it, while the parent
+   * keeps the 0 it actually filters by.
+   */
+  const lowShown = clamp(localValue[0]);
+  const highShown = clamp(localValue[1]);
+
+  const pct = (v: number) => ((v - minVal) / (maxVal - minVal || 1)) * 100;
+  const lowPct = pct(lowShown);
+  const highPct = pct(highShown);
 
   const handleLowChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseInt(e.target.value);
+    const val = clamp(parseInt(e.target.value));
     setLocalValue([Math.min(val, localValue[1]), localValue[1]]);
   };
 
   const handleHighChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseInt(e.target.value);
+    const val = clamp(parseInt(e.target.value));
     setLocalValue([localValue[0], Math.max(val, localValue[0])]);
   };
 
@@ -80,7 +119,7 @@ export const DualRangeSlider = memo(({ min, max, value, onChange, label, unit = 
           type="range" 
           min={minVal} 
           max={maxVal} 
-          value={localValue[0]} 
+          value={lowShown} 
           onChange={handleLowChange}
           className="dual-range-input accent-emerald z-10"
         />
@@ -88,7 +127,7 @@ export const DualRangeSlider = memo(({ min, max, value, onChange, label, unit = 
           type="range" 
           min={minVal} 
           max={maxVal} 
-          value={localValue[1]} 
+          value={highShown} 
           onChange={handleHighChange}
           className="dual-range-input accent-emerald z-20"
         />
