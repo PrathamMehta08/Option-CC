@@ -264,5 +264,10 @@ input[type="range"].premium-slider:active::-moz-range-thumb {
 /* premium-slider filled track: colour the run to the left of the thumb so a
    single-value slider reads the same way the dual range does. */
 input[type="range"].premium-slider::-webkit-slider-runnable-track {
-  background: linear-gradient(to right, var(--a1) 0%, var(--a2) var(--fill, 30%), var(--bg-3) var(--fill, 30%));
+  background: linear-gradient(
+    to right,
+    var(--a1) 0%,
+    var(--a2) calc(var(--fill, 30%) + 11px - (var(--fill-n, 0.3) * 22px)),
+    var(--bg-3) calc(var(--fill, 30%) + 11px - (var(--fill-n, 0.3) * 22px))
+  );
 }

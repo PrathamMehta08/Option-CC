@@ -435,7 +435,7 @@ export default function OptionAnalyzer() {
                   is the only control given real size. */}
               <div className="p-4 space-y-2">
                 <label htmlFor="ticker" className="rule block font-mono text-[11px] text-faint">
-                  Underlying
+                  Ticker
                 </label>
                 <input
                   id="ticker"
@@ -501,7 +501,12 @@ export default function OptionAnalyzer() {
                   aria-label={strategy.copy.deltaLabel}
                   onChange={(e) => setDeltaMagnitude(Math.abs(parseFloat(e.target.value)))}
                   // Drives the filled portion of the track (see globals.css).
-                  style={{ ['--fill' as string]: `${deltaMagnitude * 100}%` }}
+                  // --fill is the percentage; --fill-n the same as a fraction,
+                  // which the track uses to cancel the thumb inset.
+                  style={{
+                    ['--fill' as string]: `${deltaMagnitude * 100}%`,
+                    ['--fill-n' as string]: deltaMagnitude,
+                  }}
                   className="premium-slider"
                 />
               </div>

@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect, memo } from 'react';
 
+/** Must match .dual-range-input::-webkit-slider-thumb width in globals.css. */
+const THUMB = 24;
+
 export const DualRangeSlider = memo(({ min, max, value, onChange, label, unit = "$" }: { min: number, max: number, value: [number, number], onChange: (val: [number, number]) => void, label?: string, unit?: string }) => {
   const [localValue, setLocalValue] = useState(value);
 
@@ -24,6 +27,10 @@ export const DualRangeSlider = memo(({ min, max, value, onChange, label, unit = 
     }, 50); // Small 50ms debounce for 'live' but efficient feel
     return () => clearTimeout(timer);
   }, [localValue, onChange, value]);
+
+  const pct = (v: number) => ((v - Math.min(min, max)) / (Math.max(min, max) - Math.min(min, max) || 1)) * 100;
+  const lowPct = pct(localValue[0]);
+  const highPct = pct(localValue[1]);
 
   const minVal = Math.min(min, max);
   const maxVal = Math.max(min, max);
@@ -54,13 +61,18 @@ export const DualRangeSlider = memo(({ min, max, value, onChange, label, unit = 
         {/* Track */}
         <div className="absolute w-full h-1 bg-bg-3 rounded-full border border-line-soft" />
 
-        {/* Selected span, in the accent gradient */}
+        {/* Selected span, in the accent gradient.
+            A browser insets a range thumb by half its width, so a thumb at 0%
+            sits 12px in and one at 100% sits 12px short of the end. Positioning
+            the fill at a bare percentage therefore overshoots the handles at
+            both ends. Offsetting by (half a thumb - pct * thumb) puts the fill
+            edge exactly under the thumb centre at every position. */}
         <div
           className="absolute h-1 rounded-full z-0"
           style={{
             background: 'var(--grad)',
-            left: `${((localValue[0] - minVal) / (maxVal - minVal || 1)) * 100}%`,
-            right: `${100 - ((localValue[1] - minVal) / (maxVal - minVal || 1)) * 100}%`
+            left: `calc(${lowPct}% + ${THUMB / 2 - (THUMB * lowPct) / 100}px)`,
+            right: `calc(${100 - highPct}% + ${THUMB / 2 - (THUMB * (100 - highPct)) / 100}px)`,
           }}
         />
 
