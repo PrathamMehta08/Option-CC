@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useMemo, useDeferredValue, useRef, useCallback } from 'react';
 import {
+  ChevronDown,
+  Sparkles,
   Calendar,
   TrendingUp,
   Info,
@@ -22,6 +24,7 @@ import { STRATEGIES, STRATEGY_IDS, DEFAULT_STRATEGY_ID, type StrategyId } from '
 import type { ScreenedOption, ScreenerResponse } from '@/lib/optionChain';
 import { matchesFilter, describeFilter, type CustomFilter } from '@/lib/filters';
 import { compileFormula, type ComputedColumn } from '@/lib/formula';
+import { STARTERS } from '@/lib/assistant/starters';
 
 /** The enriched row the screener API returns. Shared with the server. */
 type OptionData = ScreenedOption;
@@ -68,6 +71,20 @@ export default function OptionAnalyzer() {
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [customFilters, setCustomFilters] = useState<CustomFilter[]>([]);
   const [computedColumns, setComputedColumns] = useState<ComputedColumn[]>([]);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantRequest, setAssistantRequest] = useState<{ text: string; n: number }>();
+  const [openExampleGroup, setOpenExampleGroup] = useState<string | null>(STARTERS[0].title);
+
+  /**
+   * Open the assistant and hand it a prompt, as if the user had typed it.
+   * The counter increments from previous state rather than reading a clock, so
+   * asking for the same example twice still registers as two requests without
+   * calling anything impure from the component body.
+   */
+  const askAssistant = (text: string) => {
+    setAssistantOpen(true);
+    setAssistantRequest((prev) => ({ text, n: (prev?.n ?? 0) + 1 }));
+  };
   const [globalSortConfig, setGlobalSortConfig] = useState<SortConfig>({ key: null, direction: null });
 
   // Custom keypad state and handlers. The state has to come first: the handlers
@@ -603,6 +620,52 @@ export default function OptionAnalyzer() {
                 </div>
               )}
 
+              {/* Examples live where the other controls are, so the assistant
+                  is discoverable without opening it first. Each one opens the
+                  panel and sends the prompt. */}
+              <div className="p-4 space-y-2.5">
+                <div className="flex items-center gap-2">
+                  <Sparkles size={12} className="text-a1" />
+                  <span className="font-mono text-[11px] text-faint">Ask the assistant</span>
+                </div>
+                <div className="space-y-1">
+                  {STARTERS.map((group) => {
+                    const isOpen = openExampleGroup === group.title;
+                    return (
+                      <div key={group.title} className="rounded border border-line-soft">
+                        <button
+                          type="button"
+                          aria-expanded={isOpen}
+                          onClick={() => setOpenExampleGroup(isOpen ? null : group.title)}
+                          className="w-full flex items-center justify-between gap-2 px-2.5 py-2 text-left text-[11px] text-fg-soft hover:text-fg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60 rounded"
+                        >
+                          {group.title}
+                          <ChevronDown
+                            size={12}
+                            className={cn('shrink-0 transition-transform', isOpen && 'rotate-180')}
+                          />
+                        </button>
+                        {isOpen && (
+                          <div className="px-2.5 pb-2.5 space-y-1.5">
+                            <p className="text-[11px] text-faint leading-relaxed">{group.hint}</p>
+                            {group.prompts.map((prompt) => (
+                              <button
+                                key={prompt}
+                                type="button"
+                                onClick={() => askAssistant(prompt)}
+                                className="w-full text-left rounded bg-bg-3 px-2 py-1.5 font-mono text-[11px] text-fg-soft transition-colors hover:text-a1 focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60"
+                              >
+                                {prompt}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               {computedColumns.length > 0 && (
                 <div className="p-4 space-y-2.5">
                   <span className="font-mono text-[11px] text-faint">Computed columns</span>
@@ -850,6 +913,9 @@ export default function OptionAnalyzer() {
         addComputedColumn={addComputedColumn}
         setSortConfig={setGlobalSortConfig}
         triggerFetch={requestScan}
+        open={assistantOpen}
+        onOpenChange={setAssistantOpen}
+        request={assistantRequest}
       />
     </div>
   );

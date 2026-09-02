@@ -3,35 +3,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useChat } from '@ai-sdk/react';
 import type { Message, ToolInvocation } from 'ai';
-import { MessageSquare, X, Send, Bot, User, Loader2, AlertTriangle } from 'lucide-react';
+import { MessageSquare, X, Send, Bot, User, Loader2, AlertTriangle, Maximize2, Minimize2 } from 'lucide-react';
+import { cn } from '@/lib/ui';
 import { parseCustomFilter, describeFilter, type CustomFilter } from '@/lib/filters';
 import type { ScreenedOption } from '@/lib/optionChain';
-
-/**
- * Starter prompts for the empty state.
- *
- * Grouped by capability rather than listed flat: a person can see at a glance
- * what the assistant is for, and every prompt is real — each maps onto a tool
- * the model actually has.
- */
-const STARTERS: { title: string; prompts: string[] }[] = [
-  {
-    title: 'Set up a scan',
-    prompts: ['Show me NVDA', 'Set my capital to $25k', 'Nothing past 3 months'],
-  },
-  {
-    title: 'Narrow it down',
-    prompts: ['Only IV above 50', 'Open interest over 1000', 'Around a 20 delta'],
-  },
-  {
-    title: 'Rank it',
-    prompts: ['Sort by annualized return', 'Cheapest premium first'],
-  },
-  {
-    title: 'Score it with your own formula',
-    prompts: ['Sort by oi^2 + ann return^2', 'Add a column for yield per day'],
-  },
-];
+import { STARTERS } from '@/lib/assistant/starters';
 
 interface LLMChatbotProps {
   /** Strategy name shown under the assistant title. */
@@ -50,6 +26,11 @@ interface LLMChatbotProps {
     direction: 'asc' | 'desc' | null;
   }) => void;
   triggerFetch: () => void;
+  /** Controlled so the sidebar's Examples can open the panel. */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** A prompt to send. The counter makes repeat sends of the same text fire. */
+  request?: { text: string; n: number };
 }
 
 export default function LLMChatbot({
@@ -64,8 +45,12 @@ export default function LLMChatbot({
   addComputedColumn,
   setSortConfig,
   triggerFetch,
+  open: isOpen,
+  onOpenChange,
+  request,
 }: LLMChatbotProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  // Expanded is a display preference, so it stays local.
+  const [expanded, setExpanded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { messages, input, handleInputChange, handleSubmit, status, error, addToolResult, append } = useChat({
@@ -80,6 +65,17 @@ export default function LLMChatbot({
     if (isLoading) return;
     append({ role: 'user', content: text });
   };
+
+  // A prompt pushed in from the sidebar. Keyed on the counter so asking for the
+  // same example twice sends it twice.
+  const lastRequest = useRef(0);
+  useEffect(() => {
+    if (!request || request.n === lastRequest.current) return;
+    lastRequest.current = request.n;
+    append({ role: 'user', content: request.text });
+    // append is stable for a given chat; re-running on it would resend.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request]);
 
   // Execute client-side tool calls when they arrive
   useEffect(() => {
@@ -157,7 +153,7 @@ export default function LLMChatbot({
     <>
       {/* Floating Action Button */}
       <button
-        onClick={() => setIsOpen(true)}
+        onClick={() => onOpenChange(true)}
         aria-label="Open the AI assistant"
         className={`fixed bottom-5 right-5 md:bottom-6 md:right-6 flex items-center justify-center w-14 h-14 bg-zinc-100 text-zinc-900 rounded-full shadow-lg hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg z-50`}
         style={{
@@ -175,7 +171,12 @@ export default function LLMChatbot({
         role="dialog"
         aria-label="AI assistant"
         aria-hidden={!isOpen}
-        className={`fixed inset-x-3 bottom-3 top-16 sm:inset-x-auto sm:top-auto sm:bottom-6 sm:right-6 sm:w-[400px] sm:h-[600px] bg-bg border border-line rounded-lg shadow-xl flex-col overflow-hidden z-50`}
+        className={cn(
+          'fixed inset-x-3 bottom-3 top-16 sm:inset-x-auto sm:top-auto sm:bottom-6 sm:right-6 bg-bg border border-line rounded-lg shadow-xl flex-col overflow-hidden z-50 transition-[width,height] duration-200',
+          expanded
+            ? 'sm:w-[min(760px,calc(100vw-3rem))] sm:h-[min(860px,calc(100vh-3rem))]'
+            : 'sm:w-[460px] sm:h-[720px]'
+        )}
         style={{
           display: 'flex',
           transition: 'opacity 0.3s ease, transform 0.3s ease',
@@ -195,13 +196,23 @@ export default function LLMChatbot({
               <p className="text-[11px] text-fg-soft tracking-normal">{subtitle}</p>
             </div>
           </div>
+          <div className="flex items-center gap-1">
           <button
-            onClick={() => setIsOpen(false)}
+            onClick={() => setExpanded((e) => !e)}
+            aria-label={expanded ? 'Shrink the assistant' : 'Expand the assistant'}
+            title={expanded ? 'Shrink' : 'Expand'}
+            className="hidden sm:block p-2 text-fg-soft hover:text-fg hover:bg-bg-3 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60"
+          >
+            {expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </button>
+          <button
+            onClick={() => onOpenChange(false)}
             aria-label="Close the assistant"
             className="p-2 text-fg-soft hover:text-fg hover:bg-bg-3 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60"
           >
             <X size={20} />
           </button>
+          </div>
         </div>
 
         {/* Messages */}
@@ -216,9 +227,11 @@ export default function LLMChatbot({
                 you want in your own words.
               </p>
 
+              <div className={cn('grid gap-5', expanded && 'sm:grid-cols-2')}>
               {STARTERS.map((group) => (
                 <div key={group.title} className="space-y-2">
                   <p className="font-mono text-[11px] text-faint">{group.title}</p>
+                  <p className="text-[11px] text-faint/80 -mt-1">{group.hint}</p>
                   <div className="flex flex-col gap-1.5">
                     {group.prompts.map((prompt) => (
                       <button
@@ -233,6 +246,7 @@ export default function LLMChatbot({
                   </div>
                 </div>
               ))}
+              </div>
 
               <p className="text-[11px] text-faint leading-relaxed">
                 You can chain these: &ldquo;NVDA, 20k, 30 delta, within 3
