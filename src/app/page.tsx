@@ -37,6 +37,7 @@ import { twMerge } from 'tailwind-merge';
 import LLMChatbot from '../components/LLMChatbot';
 import { STRATEGIES, STRATEGY_IDS, DEFAULT_STRATEGY_ID, type StrategyId } from '@/lib/strategies';
 import type { ScreenedOption, ScreenerResponse } from '@/lib/optionChain';
+import { matchesFilter, describeFilter, type CustomFilter } from '@/lib/filters';
 // --- Utils ---
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -52,12 +53,6 @@ const formatNumberWithCommas = (value: string | number) => {
 // --- Data Types ---
 /** The enriched row the screener API returns. Shared with the server. */
 type OptionData = ScreenedOption;
-
-interface CustomFilter {
-  id: string;
-  name: string;
-  code: string;
-}
 
 type ApiResponse = ScreenerResponse & { error?: string };
 
@@ -663,18 +658,8 @@ export default function OptionAnalyzer() {
       // contract; hiding unaffordable rows left the user with a blank screen and
       // no explanation. The banner below says what capital would be needed.
 
-      let customMatch = true;
-      if (customFilters.length > 0) {
-        for (const f of customFilters) {
-          try {
-            const fn = new Function('opt', `return ${f.code}`);
-            if (!fn(opt)) { customMatch = false; break; }
-          } catch (e) {
-            console.error('Filter eval error:', e);
-            customMatch = false; break;
-          }
-        }
-      }
+      // Assistant filters are validated data evaluated by us — no eval.
+      const customMatch = customFilters.every((f) => matchesFilter(opt, f));
 
       return strikeMatch && expMatch && customMatch;
     });
@@ -828,7 +813,7 @@ export default function OptionAnalyzer() {
                 {customFilters.length > 0 && (
                   <div className="flex flex-wrap gap-2">
                     {customFilters.map(f => (
-                      <span key={f.id} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-[10px] font-bold uppercase tracking-widest rounded-lg">
+                      <span key={f.id} title={describeFilter(f)} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-[10px] font-bold uppercase tracking-widest rounded-lg">
                         {f.name}
                         <button onClick={() => setCustomFilters(prev => prev.filter(cf => cf.id !== f.id))} className="hover:text-white transition-colors">
                           <X size={12} />

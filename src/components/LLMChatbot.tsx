@@ -2,7 +2,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useChat } from '@ai-sdk/react';
-import { MessageSquare, X, Send, Bot, User, Loader2 } from 'lucide-react';
+import { MessageSquare, X, Send, Bot, User, Loader2, AlertTriangle } from 'lucide-react';
+import { parseCustomFilter, describeFilter, type CustomFilter } from '@/lib/filters';
+import type { ScreenedOption } from '@/lib/optionChain';
 
 interface LLMChatbotProps {
   /** Strategy name shown under the assistant title. */
@@ -13,8 +15,11 @@ interface LLMChatbotProps {
   setMaxMonths: (months: number) => void;
   setDeltaMagnitude: (delta: number) => void;
   setStrikeFilter: (range: [number, number]) => void;
-  addCustomFilter: (filter: { id: string; name: string; code: string }) => void;
-  setSortConfig: (config: { key: any; direction: 'asc' | 'desc' | null }) => void;
+  addCustomFilter: (filter: CustomFilter) => void;
+  setSortConfig: (config: {
+    key: keyof ScreenedOption | null;
+    direction: 'asc' | 'desc' | null;
+  }) => void;
   triggerFetch: () => void;
 }
 
@@ -74,8 +79,16 @@ export default function LLMChatbot({
               result = `Strike range set to $${inv.args.minStrike}–$${inv.args.maxStrike}`;
               changed = true;
             } else if (inv.toolName === 'addCustomFilter') {
-              addCustomFilter(inv.args);
-              result = `Added custom filter: ${inv.args.name}`;
+              // Model output is untrusted data. Validate it against the schema
+              // and report a rejection rather than dropping it silently, so the
+              // model can correct itself and the user can see what happened.
+              const parsed = parseCustomFilter(inv.args);
+              if (parsed.ok) {
+                addCustomFilter(parsed.filter);
+                result = `Filter applied — ${describeFilter(parsed.filter)}`;
+              } else {
+                result = `Filter rejected: ${parsed.error}. Valid fields are the numeric columns; valid operators are gt, gte, lt, lte, eq, between.`;
+              }
             } else if (inv.toolName === 'setSort') {
               setSortConfig(inv.args);
               result = `Sorted by ${inv.args.key} ${inv.args.direction}`;
@@ -169,10 +182,17 @@ export default function LLMChatbot({
                   {invocations?.map((inv: any) => (
                     <div key={inv.toolCallId} className="bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-xs text-zinc-400 flex items-center gap-2">
                       {inv.state === 'result' ? (
-                        <>
-                          <span className="text-emerald-400">✓</span>
-                          <span>{inv.result}</span>
-                        </>
+                        String(inv.result).startsWith('Filter rejected:') ? (
+                          <>
+                            <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
+                            <span className="text-amber-500/90">{inv.result}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-emerald-400">✓</span>
+                            <span>{inv.result}</span>
+                          </>
+                        )
                       ) : (
                         <>
                           <Loader2 className="w-3 h-3 animate-spin text-emerald-500" />

@@ -1,6 +1,8 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { streamText, tool } from 'ai';
 import { z } from 'zod';
+import { FilterConditionToolSchema } from '@/lib/filters';
+import { NUMERIC_FIELDS } from '@/lib/optionChain';
 
 export const maxDuration = 30;
 
@@ -17,21 +19,7 @@ const groq = createOpenAI({
 
 // Free-form strings let the model answer "descending" where the UI expects
 // "desc", silently producing a no-op sort. Enums make the provider conform.
-const SORT_KEY = z.enum([
-  'strike',
-  'lastPrice',
-  'delta',
-  'iv',
-  'moneyness',
-  'openInterest',
-  'volume',
-  'maxContracts',
-  'totalCapitalRequired',
-  'totalPremiumReceived',
-  'annualizedReturn',
-  'daysToExpiration',
-  'expiration',
-]);
+const SORT_KEY = z.enum([...NUMERIC_FIELDS, 'expiration', 'returnPct']);
 
 const SORT_DIRECTION = z.enum(['asc', 'desc']);
 
@@ -57,7 +45,7 @@ export async function POST(req: Request) {
 You help the user filter and sort the option chain data by invoking tools.
 DO NOT make up data.
 Use the setSort tool to sort the table.
-Use addCustomFilter for complex logic (e.g. opt.iv > 50). Do not use addCustomFilter to sort.`,
+Use addCustomFilter for numeric conditions the dedicated tools do not cover (e.g. IV above 50). Emit its conditions as structured data, never as code. Do not use addCustomFilter to sort.`,
       messages,
       tools: {
         setCapital: tool({
@@ -102,14 +90,21 @@ Use addCustomFilter for complex logic (e.g. opt.iv > 50). Do not use addCustomFi
         }),
         addCustomFilter: tool({
           description:
-            'Apply a custom javascript filter expression to the option data. Use this for complex filters (e.g. IV > 50). The expression must be a valid JS boolean expression using the "opt" variable.',
+            'Filter the option table on numeric columns. Use this for conditions the dedicated tools do not cover, e.g. "IV above 50" or "open interest over 500 and annualized return above 20". Emit conditions as data; do not write code.',
           parameters: z.object({
-            id: z.string().describe('A unique identifier'),
-            name: z.string().describe('A short, human-readable name for the tag'),
-            code: z
+            id: z.string().describe('A unique identifier for this filter'),
+            name: z
               .string()
+              .describe('A short, human-readable name for the filter chip, e.g. "High IV"'),
+            mode: z
+              .enum(['and', 'or'])
+              .describe('Whether every condition must hold ("and") or any one ("or")'),
+            conditions: z
+              .array(FilterConditionToolSchema)
+              .min(1)
+              .max(10)
               .describe(
-                'The JS expression using "opt" variable. Properties: strike, lastPrice, delta, iv, moneyness, openInterest, volume, maxContracts, totalCapitalRequired, totalPremiumReceived, annualizedReturn.'
+                'The conditions. Each is a column, an operator, and a value. "between" takes a [low, high] pair; every other operator takes a single number. IV is a percentage (50 means 50%), delta is signed, moneyness is a percentage.'
               ),
           }),
         }),
