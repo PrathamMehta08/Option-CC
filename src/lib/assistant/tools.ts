@@ -2,6 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { FilterConditionToolSchema } from '@/lib/filters';
 import { NUMERIC_FIELDS } from '@/lib/optionChain';
+import { FORMULA_FUNCTIONS } from '@/lib/formula';
 
 /**
  * The assistant's tool definitions — the single source of truth.
@@ -52,6 +53,19 @@ export const TOOL_PARAMETERS = {
     direction: SORT_DIRECTION.describe('Sort direction'),
   }),
 
+  addComputedColumn: z.object({
+    id: z.string().describe('A unique identifier for this column'),
+    name: z.string().max(24).describe('A short column header, e.g. "OI x Yield"'),
+    expression: z
+      .string()
+      .max(200)
+      .describe(
+        'An arithmetic formula over the numeric columns, e.g. "openInterest^2 + annualizedReturn^2". Operators + - * / % ^ and parentheses; functions ' +
+          FORMULA_FUNCTIONS.join(', ') +
+          '. Use column names, not values. This is arithmetic only — it is not JavaScript.'
+      ),
+  }),
+
   addCustomFilter: z.object({
     id: z.string().describe('A unique identifier for this filter'),
     name: z.string().describe('A short, human-readable name for the filter chip, e.g. "High IV"'),
@@ -92,6 +106,9 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   setSort:
     'Sort the option data table by a column. Column meanings: lastPrice is the per-share premium (the table\'s "Premium" column, and what "sort by premium" means); totalPremiumReceived is that premium times the number of contracts the user can afford; annualizedReturn is the yield. Use this for superlatives too: "cheapest" is lastPrice asc, "highest yield" is annualizedReturn desc.',
 
+  addComputedColumn:
+    'Add a new column computed from the existing numeric columns, and sort by it. Use this whenever the user asks to rank or score by something that is not already a column — "sort by oi^2 + ann return^2", "score by yield per day", "premium times open interest". Give the formula as arithmetic over column names; the table sorts by the new column descending as soon as it is added, so you do not need to call setSort afterwards.',
+
   addCustomFilter:
     'Filter the option table on numeric columns. Use this for conditions the dedicated tools do not cover, e.g. "IV above 50" or "open interest over 500 and annualized return above 20". Emit conditions as data; do not write code. Column units: iv is a percentage (50 means 50%); moneyness is the SIGNED percentage distance of the strike from the current price, where 0 is at the money, +5 is 5% above spot and -5 is 5% below, so "5% out of the money" is an absolute moneyness of 5, never 95; annualizedReturn is a percentage. Only the listed columns and operators exist — if the user asks for a column or an expression outside them, do not call this tool.',
 };
@@ -114,6 +131,10 @@ export const assistantTools = {
     parameters: TOOL_PARAMETERS.setStrikeRange,
   }),
   setSort: tool({ description: DESCRIPTIONS.setSort, parameters: TOOL_PARAMETERS.setSort }),
+  addComputedColumn: tool({
+    description: DESCRIPTIONS.addComputedColumn,
+    parameters: TOOL_PARAMETERS.addComputedColumn,
+  }),
   addCustomFilter: tool({
     description: DESCRIPTIONS.addCustomFilter,
     parameters: TOOL_PARAMETERS.addCustomFilter,

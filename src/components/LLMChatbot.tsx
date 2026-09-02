@@ -7,6 +7,32 @@ import { MessageSquare, X, Send, Bot, User, Loader2, AlertTriangle } from 'lucid
 import { parseCustomFilter, describeFilter, type CustomFilter } from '@/lib/filters';
 import type { ScreenedOption } from '@/lib/optionChain';
 
+/**
+ * Starter prompts for the empty state.
+ *
+ * Grouped by capability rather than listed flat: a person can see at a glance
+ * what the assistant is for, and every prompt is real — each maps onto a tool
+ * the model actually has.
+ */
+const STARTERS: { title: string; prompts: string[] }[] = [
+  {
+    title: 'Set up a scan',
+    prompts: ['Show me NVDA', 'Set my capital to $25k', 'Nothing past 3 months'],
+  },
+  {
+    title: 'Narrow it down',
+    prompts: ['Only IV above 50', 'Open interest over 1000', 'Around a 20 delta'],
+  },
+  {
+    title: 'Rank it',
+    prompts: ['Sort by annualized return', 'Cheapest premium first'],
+  },
+  {
+    title: 'Score it with your own formula',
+    prompts: ['Sort by oi^2 + ann return^2', 'Add a column for yield per day'],
+  },
+];
+
 interface LLMChatbotProps {
   /** Strategy name shown under the assistant title. */
   subtitle: string;
@@ -17,6 +43,8 @@ interface LLMChatbotProps {
   setDeltaMagnitude: (delta: number) => void;
   setStrikeFilter: (range: [number, number]) => void;
   addCustomFilter: (filter: CustomFilter) => void;
+  addComputedColumn: (input: { id: string; name: string; expression: string }) =>
+    { ok: true; column: { name: string; source: string } } | { ok: false; error: string };
   setSortConfig: (config: {
     key: keyof ScreenedOption | null;
     direction: 'asc' | 'desc' | null;
@@ -33,18 +61,25 @@ export default function LLMChatbot({
   setDeltaMagnitude,
   setStrikeFilter,
   addCustomFilter,
+  addComputedColumn,
   setSortConfig,
   triggerFetch,
 }: LLMChatbotProps) {
   const [isOpen, setIsOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { messages, input, handleInputChange, handleSubmit, status, error, addToolResult } = useChat({
+  const { messages, input, handleInputChange, handleSubmit, status, error, addToolResult, append } = useChat({
     api: '/api/chat',
     maxSteps: 5,
   });
 
   const isLoading = status === 'submitted' || status === 'streaming';
+
+  /** Send a starter prompt as though the user had typed and submitted it. */
+  const send = (text: string) => {
+    if (isLoading) return;
+    append({ role: 'user', content: text });
+  };
 
   // Execute client-side tool calls when they arrive
   useEffect(() => {
@@ -90,6 +125,13 @@ export default function LLMChatbot({
               } else {
                 result = `Filter rejected: ${parsed.error}. Valid fields are the numeric columns; valid operators are gt, gte, lt, lte, eq, between.`;
               }
+            } else if (inv.toolName === 'addComputedColumn') {
+              // The formula is parsed by our own grammar, never executed. A
+              // rejection is reported so the model can fix the expression.
+              const added = addComputedColumn(inv.args);
+              result = added.ok
+                ? `Added column "${added.column.name}" = ${added.column.source}, sorted by it`
+                : `Formula rejected: ${added.error}`;
             } else if (inv.toolName === 'setSort') {
               setSortConfig(inv.args);
               result = `Sorted by ${inv.args.key} ${inv.args.direction}`;
@@ -165,10 +207,36 @@ export default function LLMChatbot({
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.length === 0 && (
-            <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-50">
-              <MessageSquare size={48} className="text-faint" />
-              <p className="text-sm text-fg-soft max-w-[250px]">
-                Ask me to filter options by ticker, expiry, delta, or strike. I can also give recommendations!
+            /* Showing what to type beats describing it. Each group names a
+               capability and gives one prompt that exercises it; tapping one
+               sends it, so the first message is never a blank-page problem. */
+            <div className="space-y-5">
+              <p className="text-[13px] text-fg-soft leading-relaxed">
+                I drive the screener for you. Tap an example, or describe what
+                you want in your own words.
+              </p>
+
+              {STARTERS.map((group) => (
+                <div key={group.title} className="space-y-2">
+                  <p className="font-mono text-[11px] text-faint">{group.title}</p>
+                  <div className="flex flex-col gap-1.5">
+                    {group.prompts.map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        onClick={() => send(prompt)}
+                        className="text-left rounded-md border border-line bg-bg-2 px-3 py-2 text-[12px] text-fg-soft transition-colors hover:border-a1/40 hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60"
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              <p className="text-[11px] text-faint leading-relaxed">
+                You can chain these: &ldquo;NVDA, 20k, 30 delta, within 3
+                months, then sort by yield&rdquo; works in one message.
               </p>
             </div>
           )}
@@ -188,7 +256,7 @@ export default function LLMChatbot({
                   {invocations?.map((inv) => (
                     <div key={inv.toolCallId} className="bg-bg-3 border border-line rounded-lg p-2 text-xs text-fg-soft flex items-center gap-2">
                       {inv.state === 'result' ? (
-                        String(inv.result).startsWith('Filter rejected:') ? (
+                        /^(Filter|Formula) rejected:/.test(String(inv.result)) ? (
                           <>
                             <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
                             <span className="text-amber-500/90">{inv.result}</span>
@@ -237,7 +305,7 @@ export default function LLMChatbot({
             <input
               value={input}
               onChange={handleInputChange}
-              placeholder="Ask me to filter the options..."
+              placeholder="Filter, sort, or write a formula…"
               className="w-full bg-bg border border-line text-fg text-sm rounded-md py-3 pl-4 pr-12 focus:outline-none focus:border-zinc-500 transition-colors"
               disabled={isLoading}
             />

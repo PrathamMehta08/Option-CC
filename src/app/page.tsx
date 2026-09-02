@@ -21,6 +21,7 @@ import { cn, formatNumberWithCommas, formatExpirationLabel } from '@/lib/ui';
 import { STRATEGIES, STRATEGY_IDS, DEFAULT_STRATEGY_ID, type StrategyId } from '@/lib/strategies';
 import type { ScreenedOption, ScreenerResponse } from '@/lib/optionChain';
 import { matchesFilter, describeFilter, type CustomFilter } from '@/lib/filters';
+import { compileFormula, type ComputedColumn } from '@/lib/formula';
 
 /** The enriched row the screener API returns. Shared with the server. */
 type OptionData = ScreenedOption;
@@ -66,6 +67,7 @@ export default function OptionAnalyzer() {
   const [selectedExps, setSelectedExps] = useState<string[]>([]);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [customFilters, setCustomFilters] = useState<CustomFilter[]>([]);
+  const [computedColumns, setComputedColumns] = useState<ComputedColumn[]>([]);
   const [globalSortConfig, setGlobalSortConfig] = useState<SortConfig>({ key: null, direction: null });
 
   // Custom keypad state and handlers. The state has to come first: the handlers
@@ -197,6 +199,32 @@ export default function OptionAnalyzer() {
     prevTickerRef.current = '';
     // No explicit scan here: the debounced effect above sees the parameters
     // change and runs one.
+  };
+
+  /**
+   * Compile a formula into a column. Returns a message for the assistant so a
+   * bad formula comes back as something the model can correct, not a silent
+   * no-op. Adding a column also sorts by it, which is what the request
+   * ("sort by oi^2 + ann return^2") actually asked for.
+   */
+  const addComputedColumn = (input: { id: string; name: string; expression: string }) => {
+    const compiled = compileFormula(input.expression);
+    if (!compiled.ok) return { ok: false as const, error: compiled.error };
+
+    const column: ComputedColumn = {
+      id: input.id,
+      name: input.name,
+      source: compiled.formula.source,
+      evaluate: compiled.formula.evaluate,
+    };
+    setComputedColumns((prev) => [...prev.filter((c) => c.id !== column.id), column]);
+    setGlobalSortConfig({ key: column.id, direction: 'desc' });
+    return { ok: true as const, column };
+  };
+
+  const removeComputedColumn = (id: string) => {
+    setComputedColumns((prev) => prev.filter((c) => c.id !== id));
+    setGlobalSortConfig((prev) => (prev.key === id ? { key: null, direction: null } : prev));
   };
 
   const allExpirations = useMemo(
@@ -575,6 +603,30 @@ export default function OptionAnalyzer() {
                 </div>
               )}
 
+              {computedColumns.length > 0 && (
+                <div className="p-4 space-y-2.5">
+                  <span className="font-mono text-[11px] text-faint">Computed columns</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {computedColumns.map((c) => (
+                      <span
+                        key={c.id}
+                        title={c.source}
+                        className="flex items-center gap-1.5 rounded bg-a1/10 px-2 py-1 text-[11px] text-a1 ring-1 ring-inset ring-a1/25"
+                      >
+                        {c.name}
+                        <button
+                          aria-label={`Remove ${c.name}`}
+                          onClick={() => removeComputedColumn(c.id)}
+                          className="opacity-60 hover:opacity-100 transition-opacity"
+                        >
+                          <X size={11} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {customFilters.length > 0 && (
                 <div className="p-4 space-y-2.5">
                   <span className="font-mono text-[11px] text-faint">From the assistant</span>
@@ -658,7 +710,7 @@ export default function OptionAnalyzer() {
                 </dl>
 
                 {/* Top Picks */}
-                <ResultsTable title={strategy.copy.tableTitle} options={filteredOptions.slice(0, 10)} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} capitalColumnLabel={strategy.copy.capitalColumnLabel} />
+                <ResultsTable title={strategy.copy.tableTitle} options={filteredOptions.slice(0, 10)} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} capitalColumnLabel={strategy.copy.capitalColumnLabel} computedColumns={computedColumns} onRemoveComputedColumn={removeComputedColumn} />
 
                 {/* Charts */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6 text-fg font-sans">
@@ -667,7 +719,7 @@ export default function OptionAnalyzer() {
                 </div>
 
                 {/* Full Results */}
-                <ResultsTable title="Full Market Scan Results" options={filteredOptions} count={filteredOptions.length} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} capitalColumnLabel={strategy.copy.capitalColumnLabel} />
+                <ResultsTable title="Full Market Scan Results" options={filteredOptions} count={filteredOptions.length} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} capitalColumnLabel={strategy.copy.capitalColumnLabel} computedColumns={computedColumns} onRemoveComputedColumn={removeComputedColumn} />
               </div>
             ) : loading ? (
               // A skeleton in the shape of the real results reads as progress,
@@ -795,6 +847,7 @@ export default function OptionAnalyzer() {
         setDeltaMagnitude={setDeltaMagnitude}
         setStrikeFilter={setStrikeFilter}
         addCustomFilter={(filter) => setCustomFilters(prev => [...prev.filter(f => f.id !== filter.id), filter])}
+        addComputedColumn={addComputedColumn}
         setSortConfig={setGlobalSortConfig}
         triggerFetch={requestScan}
       />

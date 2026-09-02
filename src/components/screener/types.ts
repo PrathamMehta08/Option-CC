@@ -1,6 +1,5 @@
-import type { ScreenedOption } from '@/lib/optionChain';
-
 export type SortConfig = {
-  key: keyof ScreenedOption | null;
+  /** A ScreenedOption key, or the id of a computed column. */
+  key: string | null;
   direction: 'asc' | 'desc' | null;
 };
