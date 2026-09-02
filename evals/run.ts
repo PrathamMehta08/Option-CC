@@ -39,6 +39,9 @@ const DEFAULT_CONCURRENCY = 2;
 
 // Groq free tier: 8,000 tokens/minute. Requests/day is not the binding limit.
 const DEFAULT_TPM = 8000;
+// Groq free tier also caps tokens per day, which is what actually stops a full
+// suite run: the whole thing costs more than a day's allowance.
+const DEFAULT_TPD = 200_000;
 // Leave headroom so a burst of longer replies cannot overshoot the window.
 const TPM_SAFETY = 0.85;
 const MAX_RETRIES = 8;
@@ -72,6 +75,8 @@ interface Args {
   label?: string;
   concurrency?: number;
   tpm?: number;
+  sample?: number;
+  tpd?: number;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -84,6 +89,8 @@ function parseArgs(argv: string[]): Args {
     else if (argv[i] === '--label') args.label = next();
     else if (argv[i] === '--concurrency') args.concurrency = Number(next());
     else if (argv[i] === '--tpm') args.tpm = Number(next());
+    else if (argv[i] === '--sample') args.sample = Number(next());
+    else if (argv[i] === '--tpd') args.tpd = Number(next());
     else if (argv[i] === '--help' || argv[i] === '-h') {
       console.log(`
 Usage: npm run eval [-- options]
@@ -96,6 +103,12 @@ Usage: npm run eval [-- options]
   --out <path>          write the JSON report here instead of evals/results/
   --concurrency <n>     requests in flight (default 2; raise on a paid tier)
   --tpm <n>             tokens-per-minute budget (default 8000, Groq free tier)
+  --sample <n>          run only the first n cases of each category. The full
+                        suite costs more tokens than a Groq free-tier day
+                        allows, so this is the routine run; keep the full one
+                        for a paid tier or a release check.
+  --tpd <n>             tokens-per-day budget used for the upfront estimate
+                        (default 200000, Groq free tier)
 `);
       process.exit(0);
     }
@@ -132,7 +145,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 class TokenBudget {
   private spend: { at: number; tokens: number }[] = [];
   /** Seeded, then corrected from real usage as the run proceeds. */
-  private estimate = 1900;
+  private estimate = 2150;
   private samples = 0;
 
   constructor(private readonly perMinute: number) {}
@@ -171,6 +184,22 @@ class TokenBudget {
       this.estimate + (actualTokens - this.estimate) / Math.min(this.samples, 20)
     );
   }
+}
+
+/**
+ * A daily-cap 429 is not a "wait a moment" 429.
+ *
+ * The per-minute limit clears in under a minute, so retrying is right. The
+ * per-day limit refills at roughly 140 tokens a minute, so a call needing ~2k
+ * waits ~15 minutes — and the runner would sit through eight of those before
+ * giving up, which reads as a hang. Nothing useful happens after this, so the
+ * run stops and says why.
+ */
+class DailyQuotaExhausted extends Error {}
+
+function isDailyQuota(err: unknown): boolean {
+  const message = (err as { message?: string })?.message ?? '';
+  return /tokens per day|\bTPD\b/i.test(message);
 }
 
 function isRateLimit(err: unknown): boolean {
@@ -228,6 +257,11 @@ async function callModel(messages: CoreMessage[], budget: TokenBudget) {
       return { result };
     } catch (err) {
       lastError = err;
+      if (isDailyQuota(err)) {
+        throw new DailyQuotaExhausted(
+          (err as { message?: string })?.message ?? 'daily token quota exhausted'
+        );
+      }
       if (isRateLimit(err) && attempt < MAX_RETRIES) {
         // The budget should prevent this; if it happens the estimate was low.
         await sleep(retryDelayMs(err, attempt));
@@ -236,6 +270,7 @@ async function callModel(messages: CoreMessage[], budget: TokenBudget) {
       break;
     }
   }
+  if (lastError instanceof DailyQuotaExhausted) throw lastError;
   return { error: lastError };
 }
 
@@ -255,6 +290,7 @@ async function runCase(testCase: EvalCase, budget: TokenBudget): Promise<CaseRes
   for (let step = 0; step < MAX_STEPS; step++) {
     const { result, error } = await callModel(messages, budget);
 
+    if (error instanceof DailyQuotaExhausted) throw error;
     if (error) {
       // The SDK throws rather than returning a call when the model produces
       // args the schema refuses. That is a schema rejection, not a crash.
@@ -413,6 +449,16 @@ async function main() {
   if (args.category) cases = cases.filter((c) => c.category === args.category);
   if (args.case) cases = cases.filter((c) => c.id === args.case);
 
+  if (args.sample && args.sample > 0) {
+    const perCategory = new Map<string, number>();
+    cases = cases.filter((c) => {
+      const seen = perCategory.get(c.category) ?? 0;
+      if (seen >= args.sample!) return false;
+      perCategory.set(c.category, seen + 1);
+      return true;
+    });
+  }
+
   if (cases.length === 0) {
     console.error(`No cases matched. ${args.category ? `category=${args.category} ` : ''}${args.case ? `case=${args.case}` : ''}`);
     process.exit(2);
@@ -425,29 +471,70 @@ async function main() {
   // Every case costs at least two calls: one that emits the tool call, one that
   // confirms nothing else follows. Token budget, not latency, sets the pace.
   const estimatedRequests = cases.length * 2.1;
-  const estimatedMinutes = Math.ceil(
-    (estimatedRequests * budget.perRequestEstimate) / (tpm * TPM_SAFETY)
-  );
+  const estimatedTokens = Math.round(estimatedRequests * budget.perRequestEstimate);
+  const estimatedMinutes = Math.ceil(estimatedTokens / (tpm * TPM_SAFETY));
+  const dailyBudget = args.tpd && args.tpd > 0 ? args.tpd : DEFAULT_TPD;
 
   const startedAt = new Date().toISOString();
-  const startedMs = Date.now();
   console.log(
     `\nRunning ${BOLD}${cases.length}${RESET} case${cases.length === 1 ? '' : 's'} ` +
       `against ${BOLD}${GROQ_MODEL}${RESET} (concurrency ${concurrency}, temperature 0)\n` +
-      `${DIM}Paced to ${tpm.toLocaleString()} tokens/min at ~${budget.perRequestEstimate} tokens a call — ` +
-      `roughly ${estimatedMinutes} min. Raise with --tpm on a paid tier.${RESET}\n`
+      `${DIM}~${estimatedTokens.toLocaleString()} tokens at ~${budget.perRequestEstimate} a call, ` +
+      `paced to ${tpm.toLocaleString()}/min — roughly ${estimatedMinutes} min.${RESET}\n`
   );
 
+  if (estimatedTokens > dailyBudget) {
+    console.log(
+      `${YELLOW}This run needs about ${estimatedTokens.toLocaleString()} tokens but the daily cap is ` +
+        `${dailyBudget.toLocaleString()}. It will stop partway when the cap is hit.${RESET}\n` +
+        `${DIM}Use --sample 3 for a per-category signal (~${Math.round(
+          (3 * 8 * 2.1 * budget.perRequestEstimate) / 1000
+        )}k tokens), or --tpm/--tpd on a paid tier.${RESET}\n`
+    );
+  }
+
   let done = 0;
+  let quotaError: DailyQuotaExhausted | undefined;
   const results = await pool(cases, concurrency, async (testCase) => {
-    const result = await runCase(testCase, budget);
+    if (quotaError) {
+      return {
+        id: testCase.id,
+        category: testCase.category,
+        prompt: testCase.prompt,
+        expect: testCase.expect,
+        actual: [],
+        text: '',
+        outcome: 'error' as const,
+        pass: false,
+        reason: 'skipped: daily token quota exhausted',
+        error: 'daily token quota exhausted',
+        latencyMs: 0,
+      };
+    }
+    let result: CaseResult;
+    try {
+      result = await runCase(testCase, budget);
+    } catch (err) {
+      if (err instanceof DailyQuotaExhausted) {
+        quotaError = err;
+        console.error(
+          `\n${RED}Stopped: the day's token budget is gone.${RESET}\n` +
+            `${DIM}${err.message}${RESET}\n` +
+            `${DIM}The per-day limit refills gradually, so retrying now just waits. ` +
+            `Run a smaller --sample tomorrow, or raise the tier.${RESET}\n`
+        );
+      }
+      throw err;
+    }
     done++;
     const mark = result.pass ? `${GREEN}✓${RESET}` : `${RED}✗${RESET}`;
-    const elapsed = (Date.now() - startedMs) / 60_000;
-    const eta = done > 0 ? Math.max(0, (elapsed / done) * (cases.length - done)) : 0;
+    // Project from the token budget, not from elapsed/done: the first cases
+    // wait on the rolling window, which makes a naive rate wildly pessimistic.
+    const remaining = cases.length - done;
+    const eta = (remaining * 2.1 * budget.perRequestEstimate) / (tpm * TPM_SAFETY);
     process.stdout.write(
       `${mark} ${String(done).padStart(3)}/${cases.length}  ${result.id.padEnd(30)} ` +
-        `${DIM}${eta > 0.1 ? `~${eta.toFixed(0)}m left` : ''}${RESET}\n`
+        `${DIM}${remaining > 0 ? `~${Math.ceil(eta)}m left` : ''}${RESET}\n`
     );
     return result;
   });
@@ -486,6 +573,8 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err);
-  process.exitCode = 1;
+  // The quota message has already been printed in full; a stack trace on top
+  // of it just buries the one line that tells you what to do.
+  if (!(err instanceof DailyQuotaExhausted)) console.error(err);
+  process.exitCode = err instanceof DailyQuotaExhausted ? 3 : 1;
 });
