@@ -218,9 +218,16 @@ const ResultsTable = memo(({
                 <td className="px-4 py-4 text-zinc-500 font-mono">{opt.moneyness.toFixed(1)}%</td>
                 <td className="px-4 py-4 text-zinc-600 font-mono">{opt.openInterest.toLocaleString()}</td>
                 <td className="px-4 py-4 text-zinc-600 font-mono">{opt.volume.toLocaleString()}</td>
-                <td className="px-4 py-4 text-zinc-400 font-mono">{opt.maxContracts}</td>
-                <td className="px-4 py-4 text-zinc-500 font-mono">${opt.totalCapitalRequired.toLocaleString()}</td>
-                <td className="px-4 py-4 text-zinc-500 font-mono">${opt.totalPremiumReceived.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                {/* A dash beats a $0 the user has to decode. */}
+                <td className="px-4 py-4 text-zinc-400 font-mono">{opt.maxContracts || '—'}</td>
+                <td className="px-4 py-4 text-zinc-500 font-mono">
+                  {opt.maxContracts > 0 ? `$${opt.totalCapitalRequired.toLocaleString()}` : '—'}
+                </td>
+                <td className="px-4 py-4 text-zinc-500 font-mono">
+                  {opt.maxContracts > 0
+                    ? `$${opt.totalPremiumReceived.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                    : '—'}
+                </td>
                 <td className="px-4 py-4 text-right">
                   <span className="text-emerald-400 font-bold tabular-nums text-sm">
                     {opt.annualizedReturn.toFixed(2)}%
@@ -652,8 +659,10 @@ export default function OptionAnalyzer() {
     return data.options.filter((opt: OptionData) => {
       const strikeMatch = opt.strike >= deferredStrikeFilter[0] && opt.strike <= deferredStrikeFilter[1];
       const expMatch = deferredSelectedExps.includes(opt.expiration);
-      const affordableMatch = opt.maxContracts > 0;
-      
+      // Affordability is NOT a filter. A contract's return is a property of the
+      // contract; hiding unaffordable rows left the user with a blank screen and
+      // no explanation. The banner below says what capital would be needed.
+
       let customMatch = true;
       if (customFilters.length > 0) {
         for (const f of customFilters) {
@@ -667,7 +676,7 @@ export default function OptionAnalyzer() {
         }
       }
 
-      return strikeMatch && expMatch && affordableMatch && customMatch;
+      return strikeMatch && expMatch && customMatch;
     });
   }, [data, deferredStrikeFilter, deferredSelectedExps, customFilters]);
 
@@ -934,6 +943,28 @@ export default function OptionAnalyzer() {
               <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-500 text-xs font-bold uppercase tracking-widest text-center justify-center">
                  <Info size={14} />
                  <p>{error}</p>
+              </div>
+            )}
+
+            {/* Capital covers nothing on this board: say so plainly rather than
+                showing a table of zeros or an empty screen. */}
+            {data && data.options.length > 0 && data.affordableCount === 0 && (
+              <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-3 text-amber-500">
+                <Info size={14} className="mt-0.5 shrink-0" />
+                <div className="space-y-1 text-xs">
+                  <p className="font-bold uppercase tracking-widest">
+                    Your capital covers 0 contracts
+                  </p>
+                  <p className="text-amber-500/80 leading-relaxed normal-case tracking-normal">
+                    The cheapest contract here needs{' '}
+                    <span className="font-mono font-bold">
+                      ${data.minCapitalRequired.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </span>{' '}
+                    against your{' '}
+                    <span className="font-mono font-bold">${capitalInput}</span>. Returns below are
+                    per contract and are still accurate — the contract and total columns show a dash.
+                  </p>
+                </div>
               </div>
             )}
 

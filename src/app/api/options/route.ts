@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import YahooFinance from 'yahoo-finance2';
 import { addMonths, isWithinInterval } from 'date-fns';
 import { getStrategy } from '@/lib/strategies';
+import {
+  annualizeReturn,
+  contractReturnPct,
+  effectivePremium,
+  maxContractsFor,
+  premiumPerContract,
+} from '@/lib/returns';
 import type {
   ScreenedOption,
   ScreenerResponse,
@@ -58,6 +65,8 @@ export async function GET(req: NextRequest) {
         strategy: strategy.id,
         currentPrice,
         options: [],
+        affordableCount: 0,
+        minCapitalRequired: 0,
         message: 'No expirations found in the selected range.',
       };
       return NextResponse.json(empty);
@@ -100,37 +109,38 @@ export async function GET(req: NextRequest) {
         if (delta < minDelta || delta > maxDelta) return;
 
         const capitalRequired = strategy.capitalRequiredPerContract(contract, currentPrice);
-        const maxContracts = Math.floor(capital / capitalRequired);
+        const premiumPerShare = effectivePremium(contract);
 
-        // Premium received: the bid is what you can actually sell into, so
-        // prefer it and fall back to the mid, then the last trade.
-        const midPrice =
-          contract.bid && contract.ask ? (contract.bid + contract.ask) / 2 : contract.lastPrice;
-        const premiumToUse =
-          contract.bid !== undefined && contract.bid > 0 ? contract.bid : midPrice || 0;
+        // Per-contract economics. These are properties of the contract and must
+        // not depend on how many the user can afford — that dependency is what
+        // made every row read 0.00% whenever capital covered zero contracts.
+        const premium = premiumPerContract(premiumPerShare);
+        const returnPct = contractReturnPct(premium, capitalRequired);
+        const annualizedReturnPct = annualizeReturn(returnPct, daysToExpiration);
 
+        // Affordability is reported alongside, never folded into the returns.
+        const maxContracts = maxContractsFor(capital, capitalRequired);
         const totalCapitalRequired = maxContracts * capitalRequired;
-        const totalPremiumReceived = maxContracts * premiumToUse * 100;
-        const returnPct =
-          totalCapitalRequired > 0 ? (totalPremiumReceived / totalCapitalRequired) * 100 : 0;
-        const annualizedReturnPct =
-          daysToExpiration > 0 ? returnPct * (365 / daysToExpiration) : 0;
+        const totalPremiumReceived = maxContracts * premium;
 
         rows.push({
           expiration: expirationDateStr,
           daysToExpiration,
           strike: contract.strike,
-          lastPrice: premiumToUse,
-          high: contract.ask ?? premiumToUse,
+          lastPrice: premiumPerShare,
+          high: contract.ask ?? premiumPerShare,
           delta,
           iv: sigma * 100,
           moneyness: ((contract.strike - currentPrice) / currentPrice) * 100,
           openInterest: contract.openInterest || 0,
           volume: contract.volume || 0,
+          capitalRequiredPerContract: capitalRequired,
+          premiumPerContract: premium,
+          returnPct,
+          annualizedReturn: annualizedReturnPct,
           maxContracts,
           totalCapitalRequired,
           totalPremiumReceived,
-          annualizedReturn: annualizedReturnPct,
         });
       });
     });
@@ -142,6 +152,10 @@ export async function GET(req: NextRequest) {
       strategy: strategy.id,
       currentPrice,
       options: rows,
+      affordableCount: rows.filter((r) => r.maxContracts > 0).length,
+      minCapitalRequired: rows.length
+        ? Math.min(...rows.map((r) => r.capitalRequiredPerContract))
+        : 0,
     };
     return NextResponse.json(body);
   } catch (error: unknown) {

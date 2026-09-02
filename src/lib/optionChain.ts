@@ -40,10 +40,19 @@ export interface ScreenedOption {
   openInterest: number;
   volume: number;
 
+  /** Capital to secure ONE contract. Independent of the user's capital. */
+  capitalRequiredPerContract: number;
+  /** Premium collected on ONE contract (per-share premium * 100). */
+  premiumPerContract: number;
+  /** Return on one contract, as a percentage. Never depends on affordability. */
+  returnPct: number;
+  /** `returnPct` scaled to a year. Never depends on affordability. */
+  annualizedReturn: number;
+
+  /** Informational: how many contracts the user's capital covers. May be 0. */
   maxContracts: number;
   totalCapitalRequired: number;
   totalPremiumReceived: number;
-  annualizedReturn: number;
 }
 
 export interface ScreenerResponse {
@@ -51,6 +60,10 @@ export interface ScreenerResponse {
   strategy: string;
   currentPrice: number;
   options: ScreenedOption[];
+  /** How many returned rows the user's capital covers at least one contract of. */
+  affordableCount: number;
+  /** Cheapest single contract on the board, so the UI can say what it'd take. */
+  minCapitalRequired: number;
   message?: string;
 }
 
