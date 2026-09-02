@@ -35,6 +35,8 @@ import {
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import LLMChatbot from '../components/LLMChatbot';
+import { STRATEGIES, STRATEGY_IDS, DEFAULT_STRATEGY_ID, type StrategyId } from '@/lib/strategies';
+import type { ScreenedOption, ScreenerResponse } from '@/lib/optionChain';
 // --- Utils ---
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -48,22 +50,8 @@ const formatNumberWithCommas = (value: string | number) => {
 };
 
 // --- Data Types ---
-interface OptionData {
-  expiration: string;
-  daysToExpiration: number;
-  strike: number;
-  lastPrice: number;
-  high: number;
-  delta: number;
-  iv: number;
-  moneyness: number;
-  openInterest: number;
-  volume: number;
-  maxContracts: number;
-  totalCapitalRequired: number;
-  totalPremiumReceived: number;
-  annualizedReturn: number;
-}
+/** The enriched row the screener API returns. Shared with the server. */
+type OptionData = ScreenedOption;
 
 interface CustomFilter {
   id: string;
@@ -71,12 +59,7 @@ interface CustomFilter {
   code: string;
 }
 
-interface ApiResponse {
-  ticker: string;
-  currentPrice: number;
-  options: OptionData[];
-  error?: string;
-}
+type ApiResponse = ScreenerResponse & { error?: string };
 
 type SortConfig = {
   key: keyof OptionData | null;
@@ -85,7 +68,7 @@ type SortConfig = {
 
 // --- Memoized Components ---
 
-const AnalysisChart = memo(({ title, icon: Icon, data, xAxisKey, xAxisName, yAxisKey, yAxisName, unit, color }: any) => {
+const AnalysisChart = memo(({ title, icon: Icon, data, xAxisKey, xAxisName, yAxisKey, yAxisName, unit, color, seriesName }: any) => {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   
@@ -106,7 +89,7 @@ const AnalysisChart = memo(({ title, icon: Icon, data, xAxisKey, xAxisName, yAxi
               contentStyle={{ background: '#000', border: '1px solid #18181b', borderRadius: '4px', fontSize: '10px' }}
               itemStyle={{ color }}
             />
-            <Scatter name="Calls" data={data}>
+            <Scatter name={seriesName} data={data}>
                 {data.map((entry: any, index: number) => (
                 <Cell key={`cell-${index}`} fill={color} fillOpacity={0.6} />
               ))}
@@ -125,10 +108,11 @@ const AnalysisChart = memo(({ title, icon: Icon, data, xAxisKey, xAxisName, yAxi
 AnalysisChart.displayName = 'AnalysisChart';
 
 const ResultsTable = memo(({ 
-  options, title, count, externalSortConfig, onExternalSortChange 
-}: { 
-  options: OptionData[], title: string, count?: number, 
-  externalSortConfig?: SortConfig, onExternalSortChange?: (config: SortConfig) => void 
+  options, title, count, externalSortConfig, onExternalSortChange, capitalColumnLabel
+}: {
+  options: OptionData[], title: string, count?: number,
+  externalSortConfig?: SortConfig, onExternalSortChange?: (config: SortConfig) => void,
+  capitalColumnLabel: string
 }) => {
   const [localSortConfig, setLocalSortConfig] = useState<SortConfig>({ key: null, direction: null });
   const sortConfig = externalSortConfig !== undefined ? externalSortConfig : localSortConfig;
@@ -172,7 +156,7 @@ const ResultsTable = memo(({
     <div className="space-y-4 text-white font-sans overflow-hidden">
       <div className="flex items-center justify-between px-1">
         <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 flex items-center gap-2">
-          <TableIcon size={12} /> {title || "Best Covered Call Opportunities"} {count !== undefined && `(${processedOptions.length}/${count})`}
+          <TableIcon size={12} /> {title} {count !== undefined && `(${processedOptions.length}/${count})`}
         </h3>
       </div>
 
@@ -191,7 +175,7 @@ const ResultsTable = memo(({
                 { label: 'OI', key: 'openInterest' },
                 { label: 'Vol', key: 'volume' },
                 { label: 'Contracts', key: 'maxContracts' },
-                { label: 'Stock Cost', key: 'totalCapitalRequired' },
+                { label: capitalColumnLabel, key: 'totalCapitalRequired' },
                 { label: 'Total Prem', key: 'totalPremiumReceived' },
                 { label: 'Ann. Return', key: 'annualizedReturn' },
               ].map((col) => (
@@ -544,16 +528,21 @@ const CustomKeypad = memo(({
 
 // --- Main Page ---
 
-export default function CoveredCallAnalyzer() {
+export default function OptionAnalyzer() {
+  const [strategyId, setStrategyId] = useState<StrategyId>(DEFAULT_STRATEGY_ID);
+  const strategy = STRATEGIES[strategyId];
+
   const [ticker, setTicker] = useState('');
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [capitalInput, setCapitalInput] = useState('100,000');
-  const [minMonths, setMinMonths] = useState(0);
-  const [maxMonths, setMaxMonths] = useState(6);
-  const [maxDelta, setMaxDelta] = useState(0.3);
-  const [strikeFilter, setStrikeFilter] = useState<[number, number]>([0, 5000]);
+  const [minMonths, setMinMonths] = useState(strategy.defaults.minMonths);
+  const [maxMonths, setMaxMonths] = useState(strategy.defaults.maxMonths);
+  // Always a positive magnitude; the strategy applies the sign (calls positive,
+  // puts negative) when it builds the delta window.
+  const [deltaMagnitude, setDeltaMagnitude] = useState(strategy.defaults.deltaMagnitude);
+  const [strikeFilter, setStrikeFilter] = useState<[number, number]>(strategy.defaults.strikeRange);
   const [selectedExps, setSelectedExps] = useState<string[]>([]);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [customFilters, setCustomFilters] = useState<CustomFilter[]>([]);
@@ -565,14 +554,14 @@ export default function CoveredCallAnalyzer() {
   const handleCloseKeypad = React.useCallback(() => setActiveKeypad(null), []);
   const handleStrikeMinChange = React.useCallback((v: number) => setStrikeFilter(prev => [v, prev[1]]), []);
   const handleStrikeMaxChange = React.useCallback((v: number) => setStrikeFilter(prev => [prev[0], v]), []);
-  const [activeKeypad, setActiveKeypad] = useState<'minMonths' | 'maxMonths' | 'maxDelta' | 'strikeMin' | 'strikeMax' | 'expirations' | null>(null);
-  
+  const [activeKeypad, setActiveKeypad] = useState<'minMonths' | 'maxMonths' | 'delta' | 'strikeMin' | 'strikeMax' | 'expirations' | null>(null);
+
   // Defer the filters and heavy data so the sliders stay snappy
   const deferredStrikeFilter = useDeferredValue(strikeFilter);
   const deferredSelectedExps = useDeferredValue(selectedExps);
-  const deferredMaxDelta = useDeferredValue(maxDelta);
-  const deferredMinMonths = useDeferredValue(minMonths);
-  const deferredMaxMonths = useDeferredValue(maxMonths);
+
+  // Delta is displayed with the sign the active strategy actually screens on.
+  const deltaSign = strategy.deltaWindow(1)[0] < 0 ? '-' : '';
 
   const prevTickerRef = useRef('');
   const prevMteRef = useRef({ min: 0, max: 6 });
@@ -594,12 +583,12 @@ export default function CoveredCallAnalyzer() {
     setShowMobileFilters(false);
     try {
       const params = new URLSearchParams({
+        strategy: strategyId,
         ticker: currentTicker,
         capital,
         minMonths: minMonths.toString(),
         maxMonths: maxMonths.toString(),
-        minDelta: "0",
-        maxDelta: maxDelta.toString(),
+        delta: deltaMagnitude.toString(),
       });
       const res = await fetch(`/api/options?${params}`);
       const json = await res.json();
@@ -617,16 +606,31 @@ export default function CoveredCallAnalyzer() {
           }
         }
       }
-    } catch (err) {
+    } catch {
       setError('Failed to fetch data');
     } finally {
       setLoading(false);
     }
-  }, [ticker, capital, minMonths, maxMonths, maxDelta]);
+  }, [strategyId, ticker, capital, minMonths, maxMonths, deltaMagnitude]);
 
   useEffect(() => {
     fetchOptions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Switching strategy resets the knobs to that strategy's defaults and rescans.
+  const handleStrategyChange = useCallback((next: StrategyId) => {
+    if (next === strategyId) return;
+    const defaults = STRATEGIES[next].defaults;
+    setStrategyId(next);
+    setMinMonths(defaults.minMonths);
+    setMaxMonths(defaults.maxMonths);
+    setDeltaMagnitude(defaults.deltaMagnitude);
+    setStrikeFilter(defaults.strikeRange);
+    setCustomFilters([]);
+    prevTickerRef.current = '';
+    setNeedsFetch(true);
+  }, [strategyId]);
 
   useEffect(() => {
     if (needsFetch) {
@@ -676,9 +680,27 @@ export default function CoveredCallAnalyzer() {
             <div className="hidden md:flex items-center justify-center w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-500">
                <TrendingUp size={20} />
             </div>
-            <h1 className="text-xl md:text-2xl font-bold tracking-tighter">Covered Call Analyzer</h1>
+            <h1 className="text-xl md:text-2xl font-bold tracking-tighter">{strategy.copy.heading}</h1>
+
+            {/* Strategy switcher: one deployment serves every strategy. */}
+            <div className="hidden sm:flex items-center gap-1 bg-zinc-900/50 border border-zinc-800 rounded-xl p-1">
+              {STRATEGY_IDS.map((id) => (
+                <button
+                  key={id}
+                  onClick={() => handleStrategyChange(id)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors",
+                    id === strategyId
+                      ? "bg-emerald-500 text-black"
+                      : "text-zinc-400 hover:text-white"
+                  )}
+                >
+                  {STRATEGIES[id].copy.name}
+                </button>
+              ))}
+            </div>
           </div>
-          
+
           <div className="flex items-center gap-4 md:gap-8">
              {data && (
                <div className="flex items-center gap-4 md:gap-6 bg-zinc-900/50 px-3 md:px-4 py-2 rounded-xl border border-zinc-800">
@@ -731,9 +753,9 @@ export default function CoveredCallAnalyzer() {
               </div>
 
               <div className="space-y-3">
-                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Max Delta</label>
-                <button onClick={() => setActiveKeypad('maxDelta')} className="w-full bg-zinc-900 border border-zinc-800 rounded-md py-2 px-3 text-sm text-left text-white group hover:border-zinc-700 transition-colors">
-                  <span className="font-mono">{Math.abs(maxDelta)}</span>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{strategy.copy.deltaLabel}</label>
+                <button onClick={() => setActiveKeypad('delta')} className="w-full bg-zinc-900 border border-zinc-800 rounded-md py-2 px-3 text-sm text-left text-white group hover:border-zinc-700 transition-colors">
+                  <span className="font-mono">{deltaSign}{deltaMagnitude}</span>
                 </button>
               </div>
 
@@ -839,14 +861,14 @@ export default function CoveredCallAnalyzer() {
 
                   <div className="space-y-3">
                     <div className="flex justify-between">
-                      <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Max Delta</label>
-                      <span className="text-xs text-emerald-500 font-mono font-bold leading-none">{maxDelta}</span>
+                      <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">{strategy.copy.deltaLabel}</label>
+                      <span className="text-xs text-emerald-500 font-mono font-bold leading-none">{deltaSign}{deltaMagnitude}</span>
                     </div>
                     <input 
                       type="range" 
                       min="0" max="1" step="0.01"
-                      value={maxDelta}
-                      onChange={(e) => setMaxDelta(parseFloat(e.target.value))}
+                      value={deltaMagnitude}
+                      onChange={(e) => setDeltaMagnitude(Math.abs(parseFloat(e.target.value)))}
                       className="premium-slider"
                     />
                   </div>
@@ -918,7 +940,7 @@ export default function CoveredCallAnalyzer() {
             {data && filteredOptions.length > 0 ? (
               <div className="space-y-16 md:space-y-24">
                 {/* Top Picks */}
-                <ResultsTable title="Best Covered Call Opportunities" options={filteredOptions.slice(0, 10)} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} />
+                <ResultsTable title={strategy.copy.tableTitle} options={filteredOptions.slice(0, 10)} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} capitalColumnLabel={strategy.copy.capitalColumnLabel} />
 
                 {/* Charts */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-10 text-white font-sans">
@@ -927,7 +949,7 @@ export default function CoveredCallAnalyzer() {
                 </div>
 
                 {/* Full Results */}
-                <ResultsTable title="Full Market Scan Results" options={filteredOptions} count={filteredOptions.length} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} />
+                <ResultsTable title="Full Market Scan Results" options={filteredOptions} count={filteredOptions.length} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} capitalColumnLabel={strategy.copy.capitalColumnLabel} />
               </div>
             ) : (
               <div className="h-[40vh] md:h-[50vh] flex flex-col items-center justify-center space-y-6 md:space-y-10 rounded-[2rem] border border-zinc-900 bg-zinc-950/20 px-8 text-center bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-zinc-900/40 via-transparent to-transparent">
@@ -938,7 +960,7 @@ export default function CoveredCallAnalyzer() {
                     </div>
                     <div className="space-y-3 animate-in slide-in-from-bottom-4 duration-500">
                       <p className="text-zinc-200 text-xl font-bold tracking-tight uppercase">Analyze the Markets</p>
-                      <p className="text-zinc-500 text-xs md:text-sm max-w-xs mx-auto leading-relaxed">Enter a symbol like <span className="text-emerald-500 font-mono font-bold">NVDA</span> or <span className="text-emerald-500 font-mono font-bold">TSLA</span> to find premium covered call opportunities.</p>
+                      <p className="text-zinc-500 text-xs md:text-sm max-w-xs mx-auto leading-relaxed">Enter a symbol like <span className="text-emerald-500 font-mono font-bold">NVDA</span> or <span className="text-emerald-500 font-mono font-bold">TSLA</span> to find premium {strategy.copy.emptyHint}</p>
                     </div>
                   </>
                 )}
@@ -977,12 +999,12 @@ export default function CoveredCallAnalyzer() {
           onChange={setMaxMonths} 
         />
       )}
-      {activeKeypad === 'maxDelta' && (
+      {activeKeypad === 'delta' && (
         <CustomKeypad 
           type="delta" 
-          value={maxDelta} 
+          value={deltaMagnitude} 
           onClose={handleCloseKeypad} 
-          onChange={setMaxDelta} 
+          onChange={setDeltaMagnitude} 
         />
       )}
       {activeKeypad === 'strikeMin' && data && (
@@ -1014,11 +1036,12 @@ export default function CoveredCallAnalyzer() {
         />
       )}
       <LLMChatbot 
+        subtitle={strategy.copy.assistantSubtitle}
         setTicker={setTicker}
         setCapital={setCapitalInput}
         setMinMonths={setMinMonths}
         setMaxMonths={setMaxMonths}
-        setMaxDelta={setMaxDelta}
+        setDeltaMagnitude={setDeltaMagnitude}
         setStrikeFilter={setStrikeFilter}
         addCustomFilter={(filter) => setCustomFilters(prev => [...prev.filter(f => f.id !== filter.id), filter])}
         setSortConfig={setGlobalSortConfig}

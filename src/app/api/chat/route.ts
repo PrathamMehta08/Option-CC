@@ -86,10 +86,11 @@ Use addCustomFilter for complex logic (e.g. opt.iv > 50). Do not use addCustomFi
             maxMonths: z.number().describe('Maximum months to expiration'),
           }),
         }),
-        setMaxDelta: tool({
-          description: 'Set the maximum absolute delta for the options (e.g. 0.3 for a 30 delta)',
+        setDelta: tool({
+          description:
+            'Set the delta limit for the options. Give the magnitude as a positive number between 0 and 1 (e.g. 0.3 for a 30 delta); the app applies the correct sign for the active strategy.',
           parameters: z.object({
-            maxDelta: z.number().describe('The maximum delta value (between 0 and 1)'),
+            delta: z.number().min(0).max(1).describe('The delta magnitude, between 0 and 1'),
           }),
         }),
         setStrikeRange: tool({

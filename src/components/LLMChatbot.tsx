@@ -5,11 +5,13 @@ import { useChat } from '@ai-sdk/react';
 import { MessageSquare, X, Send, Bot, User, Loader2 } from 'lucide-react';
 
 interface LLMChatbotProps {
+  /** Strategy name shown under the assistant title. */
+  subtitle: string;
   setTicker: (ticker: string) => void;
   setCapital: (capital: string) => void;
   setMinMonths: (months: number) => void;
   setMaxMonths: (months: number) => void;
-  setMaxDelta: (delta: number) => void;
+  setDeltaMagnitude: (delta: number) => void;
   setStrikeFilter: (range: [number, number]) => void;
   addCustomFilter: (filter: { id: string; name: string; code: string }) => void;
   setSortConfig: (config: { key: any; direction: 'asc' | 'desc' | null }) => void;
@@ -17,11 +19,12 @@ interface LLMChatbotProps {
 }
 
 export default function LLMChatbot({
+  subtitle,
   setTicker,
   setCapital,
   setMinMonths,
   setMaxMonths,
-  setMaxDelta,
+  setDeltaMagnitude,
   setStrikeFilter,
   addCustomFilter,
   setSortConfig,
@@ -61,9 +64,10 @@ export default function LLMChatbot({
               setMaxMonths(inv.args.maxMonths);
               result = `Months range set to ${inv.args.minMonths}–${inv.args.maxMonths}`;
               changed = true;
-            } else if (inv.toolName === 'setMaxDelta') {
-              setMaxDelta(inv.args.maxDelta);
-              result = `Max delta set to ${inv.args.maxDelta}`;
+            } else if (inv.toolName === 'setDelta') {
+              const magnitude = Math.abs(inv.args.delta);
+              setDeltaMagnitude(magnitude);
+              result = `Delta limit set to ${magnitude}`;
               changed = true;
             } else if (inv.toolName === 'setStrikeRange') {
               setStrikeFilter([inv.args.minStrike, inv.args.maxStrike]);
@@ -128,7 +132,7 @@ export default function LLMChatbot({
             </div>
             <div>
               <h3 className="font-bold text-white text-sm">AI Assistant</h3>
-              <p className="text-[10px] text-zinc-400 uppercase tracking-wider">Covered Calls</p>
+              <p className="text-[10px] text-zinc-400 uppercase tracking-wider">{subtitle}</p>
             </div>
           </div>
           <button
