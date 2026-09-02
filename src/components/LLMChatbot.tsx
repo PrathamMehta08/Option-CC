@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useChat } from '@ai-sdk/react';
 import type { Message, ToolInvocation } from 'ai';
-import { MessageSquare, X, Send, Bot, User, Loader2, AlertTriangle, Maximize2, Minimize2 } from 'lucide-react';
+import { MessageSquare, X, Send, Bot, User, Loader2, AlertTriangle, Maximize2, Minimize2, Sparkles, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/ui';
 import { parseCustomFilter, describeFilter, type CustomFilter } from '@/lib/filters';
 import type { ScreenedOption } from '@/lib/optionChain';
@@ -26,11 +26,6 @@ interface LLMChatbotProps {
     direction: 'asc' | 'desc' | null;
   }) => void;
   triggerFetch: () => void;
-  /** Controlled so the sidebar's Examples can open the panel. */
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  /** A prompt to send. The counter makes repeat sends of the same text fire. */
-  request?: { text: string; n: number };
 }
 
 export default function LLMChatbot({
@@ -45,12 +40,13 @@ export default function LLMChatbot({
   addComputedColumn,
   setSortConfig,
   triggerFetch,
-  open: isOpen,
-  onOpenChange,
-  request,
 }: LLMChatbotProps) {
+  const [isOpen, setIsOpen] = useState(false);
   // Expanded is a display preference, so it stays local.
   const [expanded, setExpanded] = useState(false);
+  // The examples rail; open on first use, dismissable once you know the ropes.
+  const [showExamples, setShowExamples] = useState(true);
+  const [openGroup, setOpenGroup] = useState<string | null>(STARTERS[0].title);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { messages, input, handleInputChange, handleSubmit, status, error, addToolResult, append } = useChat({
@@ -66,16 +62,6 @@ export default function LLMChatbot({
     append({ role: 'user', content: text });
   };
 
-  // A prompt pushed in from the sidebar. Keyed on the counter so asking for the
-  // same example twice sends it twice.
-  const lastRequest = useRef(0);
-  useEffect(() => {
-    if (!request || request.n === lastRequest.current) return;
-    lastRequest.current = request.n;
-    append({ role: 'user', content: request.text });
-    // append is stable for a given chat; re-running on it would resend.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [request]);
 
   // Execute client-side tool calls when they arrive
   useEffect(() => {
@@ -153,7 +139,7 @@ export default function LLMChatbot({
     <>
       {/* Floating Action Button */}
       <button
-        onClick={() => onOpenChange(true)}
+        onClick={() => setIsOpen(true)}
         aria-label="Open the AI assistant"
         className={`fixed bottom-5 right-5 md:bottom-6 md:right-6 flex items-center justify-center w-14 h-14 bg-zinc-100 text-zinc-900 rounded-full shadow-lg hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg z-50`}
         style={{
@@ -172,19 +158,85 @@ export default function LLMChatbot({
         aria-label="AI assistant"
         aria-hidden={!isOpen}
         className={cn(
-          'fixed inset-x-3 bottom-3 top-16 sm:inset-x-auto sm:top-auto sm:bottom-6 sm:right-6 bg-bg border border-line rounded-lg shadow-xl flex-col overflow-hidden z-50 transition-[width,height] duration-200',
+          'fixed inset-x-3 bottom-3 top-16 sm:inset-x-auto sm:top-auto sm:bottom-6 sm:right-6 bg-bg border border-line rounded-lg shadow-xl overflow-hidden z-50 transition-[width,height] duration-200',
+          // Both axes are clamped to the viewport: a fixed height runs off the
+          // top of the screen on any laptop shorter than the panel.
           expanded
-            ? 'sm:w-[min(760px,calc(100vw-3rem))] sm:h-[min(860px,calc(100vh-3rem))]'
-            : 'sm:w-[460px] sm:h-[720px]'
+            ? 'sm:w-[min(1000px,calc(100vw-3rem))] sm:h-[min(880px,calc(100vh-3rem))]'
+            : 'sm:w-[min(720px,calc(100vw-3rem))] sm:h-[min(720px,calc(100vh-3rem))]'
         )}
         style={{
           display: 'flex',
+          flexDirection: 'row',
           transition: 'opacity 0.3s ease, transform 0.3s ease',
           opacity: isOpen ? 1 : 0,
           transform: isOpen ? 'translateY(0)' : 'translateY(32px)',
           pointerEvents: isOpen ? 'auto' : 'none',
         }}
       >
+        {/* Examples rail, attached to the panel rather than living in the
+            screener's filter sidebar — it belongs to the assistant. Hidden
+            below sm, where the panel is already the whole screen and the empty
+            state carries the same prompts inline. */}
+        {showExamples && (
+          <aside className="hidden sm:flex w-[228px] shrink-0 flex-col border-r border-line bg-bg-2">
+            <div className="flex items-center justify-between gap-2 px-3 py-3 border-b border-line shrink-0">
+              <span className="flex items-center gap-2 font-mono text-[11px] text-faint">
+                <Sparkles size={12} className="text-a1" /> Examples
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowExamples(false)}
+                aria-label="Hide the examples"
+                title="Hide examples"
+                className="p-1 text-faint hover:text-fg rounded transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60"
+              >
+                <X size={13} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-2 space-y-1 scrollbar-thin">
+              {STARTERS.map((group) => {
+                const open = openGroup === group.title;
+                return (
+                  <div key={group.title} className="rounded border border-line-soft">
+                    <button
+                      type="button"
+                      aria-expanded={open}
+                      onClick={() => setOpenGroup(open ? null : group.title)}
+                      className="w-full flex items-center justify-between gap-2 px-2.5 py-2 text-left text-[11px] text-fg-soft hover:text-fg transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60"
+                    >
+                      {group.title}
+                      <ChevronDown
+                        size={12}
+                        className={cn('shrink-0 transition-transform', open && 'rotate-180')}
+                      />
+                    </button>
+                    {open && (
+                      <div className="px-2.5 pb-2.5 space-y-1.5">
+                        <p className="text-[11px] text-faint leading-relaxed">{group.hint}</p>
+                        {group.prompts.map((prompt) => (
+                          <button
+                            key={prompt}
+                            type="button"
+                            onClick={() => send(prompt)}
+                            disabled={isLoading}
+                            className="w-full text-left rounded bg-bg-3 px-2 py-1.5 font-mono text-[11px] text-fg-soft transition-colors hover:text-a1 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60"
+                          >
+                            {prompt}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </aside>
+        )}
+
+        {/* Chat column */}
+        <div className="flex flex-1 min-w-0 flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-line bg-bg-2 shrink-0">
           <div className="flex items-center gap-2">
@@ -197,6 +249,16 @@ export default function LLMChatbot({
             </div>
           </div>
           <div className="flex items-center gap-1">
+          {!showExamples && (
+            <button
+              onClick={() => setShowExamples(true)}
+              aria-label="Show the examples"
+              title="Examples"
+              className="hidden sm:block p-2 text-fg-soft hover:text-fg hover:bg-bg-3 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60"
+            >
+              <Sparkles size={16} />
+            </button>
+          )}
           <button
             onClick={() => setExpanded((e) => !e)}
             aria-label={expanded ? 'Shrink the assistant' : 'Expand the assistant'}
@@ -206,7 +268,7 @@ export default function LLMChatbot({
             {expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
           </button>
           <button
-            onClick={() => onOpenChange(false)}
+            onClick={() => setIsOpen(false)}
             aria-label="Close the assistant"
             className="p-2 text-fg-soft hover:text-fg hover:bg-bg-3 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60"
           >
@@ -223,11 +285,16 @@ export default function LLMChatbot({
                sends it, so the first message is never a blank-page problem. */
             <div className="space-y-5">
               <p className="text-[13px] text-fg-soft leading-relaxed">
-                I drive the screener for you. Tap an example, or describe what
-                you want in your own words.
+                I drive the screener for you.{' '}
+                <span className={cn(showExamples && 'hidden sm:inline')}>
+                  Pick an example from the left, or describe what you want.
+                </span>
+                <span className={cn(showExamples && 'sm:hidden')}>
+                  Tap an example, or describe what you want in your own words.
+                </span>
               </p>
 
-              <div className={cn('grid gap-5', expanded && 'sm:grid-cols-2')}>
+              <div className={cn('grid gap-5', expanded && 'sm:grid-cols-2', showExamples && 'sm:hidden')}>
               {STARTERS.map((group) => (
                 <div key={group.title} className="space-y-2">
                   <p className="font-mono text-[11px] text-faint">{group.title}</p>
@@ -332,6 +399,7 @@ export default function LLMChatbot({
               <Send size={16} />
             </button>
           </form>
+        </div>
         </div>
       </div>
     </>
