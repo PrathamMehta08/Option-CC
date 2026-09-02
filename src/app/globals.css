@@ -13,13 +13,19 @@
   --font-mono: var(--font-mono-custom), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+/* A near-black ground rather than pure #000: on an OLED panel pure black makes
+   every border and surface read as a hard edge, which is what gives a dark UI
+   its "gaming peripheral" look. A few points of lightness gives the surfaces
+   room to sit above the page. */
 :root {
-  --background: #000000;
-  --foreground: #ffffff;
-  --card: #0a0a0a;
-  --card-foreground: #fafafa;
-  --border: #27272a;
-  --accent: #10b981;
+  --background: #0a0a0b;
+  --foreground: #ededef;
+  --surface: #111113;
+  --surface-raised: #16161a;
+  --border: #232327;
+  --muted: #8b8b93;
+  /* Reserved for figures that mean something — a positive return — not chrome. */
+  --positive: #34d399;
 }
 
 body {
@@ -38,7 +44,7 @@ table,
   font-variant-numeric: tabular-nums;
 }
 
-/* Custom scrollbar - Professional & Minimalist */
+/* Scrollbars */
 .scrollbar-none::-webkit-scrollbar {
   display: none;
 }
@@ -56,7 +62,7 @@ table,
 .scrollbar-thin::-webkit-scrollbar-thumb {
   background: #27272a;
   border-radius: 20px;
-  border: 2px solid black; /* Creates 'floating' effect */
+  border: 2px solid #0a0a0b; /* Creates 'floating' effect */
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
@@ -75,7 +81,7 @@ table,
 ::-webkit-scrollbar-thumb {
   background: #18181b;
   border-radius: 10px;
-  border: 2px solid black;
+  border: 2px solid #0a0a0b;
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -86,7 +92,7 @@ table,
   -webkit-overflow-scrolling: touch;
 }
 
-/* Premium Range Input Styling */
+/* Range inputs */
 input[type="range"].premium-slider {
   -webkit-appearance: none;
   appearance: none;
@@ -122,18 +128,18 @@ input[type="range"].premium-slider::-webkit-slider-thumb {
   height: 22px;
   width: 22px;
   border-radius: 50%;
-  border: 4px solid #000;
+  border: 4px solid #0a0a0b;
   box-shadow: 0 0 0 1px #3f3f46, 0 4px 6px -1px rgb(0 0 0 / 0.1);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 input[type="range"].premium-slider.accent-emerald::-webkit-slider-thumb {
-  background-color: #10b981;
+  background-color: #d4d4d8;
 }
 
 input[type="range"].premium-slider:active::-webkit-slider-thumb {
   transform: scale(1.15);
-  box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+  box-shadow: 0 0 0 1px #52525b;
   filter: brightness(1.1);
 }
 
@@ -143,13 +149,13 @@ input[type="range"].premium-slider::-moz-range-thumb {
   height: 22px;
   width: 22px;
   border-radius: 50%;
-  border: 4px solid #000;
+  border: 4px solid #0a0a0b;
   box-shadow: 0 0 0 1px #3f3f46;
   transition: all 0.2s ease;
 }
 
 input[type="range"].premium-slider.accent-emerald::-moz-range-thumb {
-  background-color: #10b981;
+  background-color: #d4d4d8;
 }
 
 input[type="range"].premium-slider:active::-moz-range-thumb {
@@ -180,14 +186,14 @@ input[type="range"].premium-slider:active::-moz-range-thumb {
   width: 24px;
   border-radius: 50%;
   background: #ffffff;
-  border: 4px solid #000;
+  border: 4px solid #0a0a0b;
   box-shadow: 0 0 0 1px #3f3f46, 0 4px 6px -1px rgb(0 0 0 / 0.1);
   cursor: pointer;
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .dual-range-input.accent-emerald::-webkit-slider-thumb {
-  background: #10b981;
+  background: #d4d4d8;
 }
 
 .dual-range-input::-webkit-slider-thumb:active {
@@ -201,11 +207,11 @@ input[type="range"].premium-slider:active::-moz-range-thumb {
   width: 24px;
   border-radius: 50%;
   background: #ffffff;
-  border: 4px solid #000;
+  border: 4px solid #0a0a0b;
   box-shadow: 0 0 0 1px #3f3f46;
   cursor: pointer;
 }
 
 .dual-range-input.accent-emerald::-moz-range-thumb {
-  background: #10b981;
+  background: #d4d4d8;
 }

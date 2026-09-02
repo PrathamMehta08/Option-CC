@@ -91,14 +91,14 @@ export const CustomKeypad = memo(({
 
   // Sub-components as local renders to avoid re-mounting logic issues
   const MonthsGrid = () => (
-    <div className="flex-1 grid grid-cols-4 grid-rows-4 gap-0.5 p-0.5 bg-zinc-950/50 rounded-xl overflow-hidden min-h-0">
+    <div className="flex-1 grid grid-cols-4 grid-rows-4 gap-0.5 p-0.5 bg-zinc-950/50 rounded-lg overflow-hidden min-h-0">
       {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 0].map(m => (
         <button 
           key={m}
           onClick={() => { emitNumber(m); onClose(); }}
           className={cn(
             "text-xl font-medium transition-colors flex items-center justify-center",
-            value === m ? "bg-emerald-500 text-black hover:bg-emerald-400" : "bg-zinc-900/40 hover:bg-zinc-800/60 text-white",
+            value === m ? "bg-zinc-100 text-zinc-900 hover:bg-white" : "bg-zinc-900/40 hover:bg-zinc-800/60 text-white",
             m === 0 && "col-start-2 col-span-2"
           )}
         >
@@ -110,7 +110,7 @@ export const CustomKeypad = memo(({
 
   const ExpirationsGrid = () => (
     <div className="flex-1 overflow-y-auto p-0.5 bg-zinc-950/50 scrollbar-none">
-       <div className="grid grid-cols-3 gap-0.5 rounded-xl overflow-hidden">
+       <div className="grid grid-cols-3 gap-0.5 rounded-lg overflow-hidden">
         {allExps?.map((exp: string) => {
           const isSelected = Array.isArray(localValue) && localValue.includes(exp);
           return (
@@ -127,11 +127,11 @@ export const CustomKeypad = memo(({
               className={cn(
                 "py-6 flex flex-col items-center justify-center transition-all",
                 isSelected 
-                  ? "bg-emerald-500 text-black shadow-[inset_0_0_20px_rgba(0,0,0,0.1)]" 
+                  ? "bg-zinc-100 text-zinc-900" 
                   : "bg-zinc-900/40 text-zinc-400 hover:bg-zinc-900/60"
               )}
             >
-              <span className="text-[10px] font-black uppercase tracking-tighter opacity-60 mb-1">
+              <span className="text-[11px] font-semibold tracking-tighter opacity-60 mb-1">
                 {isSelected ? 'Included' : 'Hidden'}
               </span>
               <span className="text-sm font-bold tracking-tight">
@@ -158,8 +158,8 @@ export const CustomKeypad = memo(({
 
     return (
       <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between p-3 border-b border-zinc-900">
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Edit {type}</span>
+        <div className="flex items-center justify-between p-3 border-b border-zinc-800">
+          <span className="text-[11px] font-semibold tracking-normal text-zinc-500">Edit {type}</span>
           <button onClick={onClose} className="p-2 bg-zinc-900 rounded-full text-zinc-400"><X size={24} /></button>
         </div>
 
@@ -172,7 +172,7 @@ export const CustomKeypad = memo(({
                  setLocalValue(Math.abs(val).toFixed(2));
                  setIsFirstKey(false);
                }}
-               className="px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-full text-[10px] font-bold text-zinc-300 active:bg-emerald-500 active:text-black transition-colors"
+               className="px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-full text-[11px] font-bold text-zinc-300 active:bg-zinc-700 active:text-zinc-100 transition-colors"
              >
                {typeof p === 'number' ? p : `${p.label} ($${p.val.toFixed(2)})`}
              </button>
@@ -206,27 +206,27 @@ export const CustomKeypad = memo(({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col justify-end bg-black/60 backdrop-blur-sm">
-      <div className="bg-black border-t border-zinc-800 rounded-t-[2rem] overflow-hidden h-fit max-h-[85vh] min-h-[50vh] flex flex-col animate-in slide-in-from-bottom duration-300">
+    <div className="fixed inset-0 z-[100] flex flex-col justify-end bg-zinc-950/60 backdrop-blur-sm">
+      <div className="bg-zinc-950 border-t border-zinc-800 rounded-t-[2rem] overflow-hidden h-fit max-h-[85vh] min-h-[50vh] flex flex-col animate-in slide-in-from-bottom duration-300">
         {type === 'months' ? (
           <div className="flex flex-col flex-1">
-             <div className="flex items-center justify-between p-3 border-b border-zinc-900">
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Expiry Selection</span>
+             <div className="flex items-center justify-between p-3 border-b border-zinc-800">
+                <span className="text-[11px] font-semibold tracking-normal text-zinc-500">Expiry Selection</span>
                 <button onClick={onClose} className="p-2 bg-zinc-900 rounded-full text-zinc-400"><X size={24} /></button>
              </div>
              <MonthsGrid />
           </div>
         ) : type === 'expirations' ? (
           <div className="flex flex-col flex-1">
-             <div className="flex items-center justify-between p-3 border-b border-zinc-900">
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Filter Strike Dates</span>
+             <div className="flex items-center justify-between p-3 border-b border-zinc-800">
+                <span className="text-[11px] font-semibold tracking-normal text-zinc-500">Filter Strike Dates</span>
                 <div className="flex items-center gap-2">
                    <button 
                      onClick={() => { 
                        setLocalValue(allExps || []); 
                        emitDates(allExps || []); 
                      }}
-                     className="px-3 py-1.5 bg-zinc-900 rounded-lg text-[10px] font-bold text-zinc-400 uppercase tracking-widest hover:text-white"
+                     className="px-3 py-1.5 bg-zinc-900 rounded-lg text-[11px] font-bold text-zinc-400 tracking-normal hover:text-white"
                    >All</button>
                    <button onClick={onClose} className="p-2 bg-zinc-900 rounded-full text-zinc-400"><X size={24} /></button>
                 </div>

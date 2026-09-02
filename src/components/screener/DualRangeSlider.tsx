@@ -41,9 +41,9 @@ export const DualRangeSlider = memo(({ min, max, value, onChange, label, unit = 
   return (
     <div className="space-y-4">
       {label && (
-        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest leading-none block">{label}</label>
+        <label className="text-[11px] font-bold text-zinc-500 tracking-normal leading-none block">{label}</label>
       )}
-      <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
+      <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
         <div className="bg-zinc-900 py-1.5 rounded-lg border border-zinc-800 text-center text-zinc-100 font-bold">{unit}{localValue[0]}</div>
         <div className="bg-zinc-900 py-1.5 rounded-lg border border-zinc-800 text-center text-zinc-100 font-bold">{unit}{localValue[1]}</div>
       </div>
@@ -53,7 +53,7 @@ export const DualRangeSlider = memo(({ min, max, value, onChange, label, unit = 
         
         {/* Active Range Highlight */}
         <div 
-          className="absolute h-1.5 bg-emerald-500 rounded-full z-0" 
+          className="absolute h-1.5 bg-zinc-400 rounded-full z-0" 
           style={{
             left: `${((localValue[0] - minVal) / (maxVal - minVal || 1)) * 100}%`,
             right: `${100 - ((localValue[1] - minVal) / (maxVal - minVal || 1)) * 100}%`

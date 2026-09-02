@@ -138,16 +138,16 @@ export const ResultsTable = memo(({
 
   const SortIcon = ({ colKey }: { colKey: keyof OptionData }) => {
     if (sortConfig.key !== colKey) return <ArrowUpDown size={10} className="ml-1 opacity-20 group-hover:opacity-50" />;
-    return sortConfig.direction === 'asc' ? <ChevronUp size={10} className="ml-1 text-emerald-500" /> : <ChevronDown size={10} className="ml-1 text-emerald-500" />;
+    return sortConfig.direction === 'asc' ? <ChevronUp size={10} className="ml-1 text-zinc-300" /> : <ChevronDown size={10} className="ml-1 text-zinc-300" />;
   };
 
   const deltaTone = (delta: number) =>
-    Math.abs(delta) > 0.35 ? 'text-amber-500' : 'text-emerald-500/80';
+    Math.abs(delta) > 0.35 ? 'text-amber-400' : 'text-zinc-400';
 
   return (
     <div className="space-y-4 text-white font-sans">
       <div className="flex items-center justify-between gap-3 px-1">
-        <h3 className="min-w-0 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 flex items-center gap-2">
+        <h3 className="min-w-0 text-[11px] font-bold tracking-normal text-zinc-500 flex items-center gap-2">
           <TableIcon size={12} className="shrink-0" />
           <span className="truncate">{title}</span>
           {count !== undefined && (
@@ -170,7 +170,7 @@ export const ResultsTable = memo(({
                 direction: e.target.value ? (sortConfig.direction ?? 'desc') : null,
               })
             }
-            className="bg-zinc-900 border border-zinc-800 rounded-lg py-2 pl-2.5 pr-7 text-[11px] text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 appearance-none"
+            className="bg-zinc-900 border border-zinc-800 rounded-lg py-2 pl-2.5 pr-7 text-[11px] text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 appearance-none"
           >
             <option value="">Default order</option>
             {columns.map((col) => (
@@ -187,7 +187,7 @@ export const ResultsTable = memo(({
               })
             }
             aria-label={sortConfig.direction === 'asc' ? 'Sort descending' : 'Sort ascending'}
-            className="h-[34px] w-[34px] flex items-center justify-center bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-300 disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+            className="h-[34px] w-[34px] flex items-center justify-center bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-300 disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
           >
             {sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
           </button>
@@ -199,7 +199,7 @@ export const ResultsTable = memo(({
         {visibleOnMobile.map((opt, i) => (
           <li
             key={i}
-            className="rounded-xl border border-zinc-900 bg-zinc-950/60 p-4 space-y-3"
+            className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-4 space-y-3"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-1 min-w-0">
@@ -208,7 +208,7 @@ export const ResultsTable = memo(({
                 </p>
                 <p className="text-[11px] text-zinc-500 flex items-center gap-2">
                   {opt.expiration}
-                  <span className="px-1.5 py-0.5 bg-emerald-500/10 border border-emerald-500/20 rounded text-emerald-500 font-bold font-mono text-[10px]">
+                  <span className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700 rounded text-zinc-300 font-medium font-mono text-[11px]">
                     {opt.daysToExpiration}d
                   </span>
                 </p>
@@ -217,19 +217,19 @@ export const ResultsTable = memo(({
                 <p className="text-lg font-bold tabular-nums text-emerald-400 leading-none">
                   {opt.annualizedReturn.toFixed(2)}%
                 </p>
-                <p className="text-[9px] uppercase tracking-[0.15em] text-zinc-600 mt-1">
+                <p className="text-[11px] tracking-normal text-zinc-600 mt-1">
                   Ann. return
                 </p>
               </div>
             </div>
 
-            <dl className="grid grid-cols-3 gap-x-3 gap-y-2 pt-3 border-t border-zinc-900">
+            <dl className="grid grid-cols-3 gap-x-3 gap-y-2 pt-3 border-t border-zinc-800">
               {CARD_DETAIL_KEYS.map((key) => {
                 const col = byKey[key as string];
                 if (!col) return null;
                 return (
                   <div key={key as string} className="min-w-0">
-                    <dt className="text-[9px] uppercase tracking-[0.12em] text-zinc-600 truncate">
+                    <dt className="text-[11px] tracking-normal text-zinc-600 truncate">
                       {col.label}
                     </dt>
                     <dd
@@ -252,7 +252,7 @@ export const ResultsTable = memo(({
         <button
           type="button"
           onClick={() => setMobilePageCount((n) => n + 1)}
-          className="md:hidden w-full py-3.5 rounded-xl border border-zinc-800 bg-zinc-900/60 text-[11px] font-bold uppercase tracking-widest text-zinc-300 hover:bg-zinc-900 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          className="md:hidden w-full py-3.5 rounded-lg border border-zinc-800 bg-zinc-900/60 text-[11px] font-bold tracking-normal text-zinc-300 hover:bg-zinc-900 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
         >
           Show {Math.min(MOBILE_PAGE_SIZE, hiddenOnMobile)} more
           <span className="text-zinc-600 font-mono normal-case tracking-normal ml-2">
@@ -262,10 +262,10 @@ export const ResultsTable = memo(({
       )}
 
       {/* -------------------------------------------------- desktop: table */}
-      <div className="hidden md:block overflow-x-auto rounded-xl border border-zinc-900 bg-black/50 overflow-y-auto max-h-[600px] scrollbar-thin">
+      <div className="hidden md:block overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/60 overflow-y-auto max-h-[600px] scrollbar-thin">
         <table className="w-full text-left text-[11px] whitespace-nowrap border-collapse">
           <thead className="bg-zinc-950 text-zinc-500 sticky top-0 z-10">
-            <tr className="border-b border-zinc-900">
+            <tr className="border-b border-zinc-800">
               {columns.map((col) => (
                 <th
                   key={col.key}
@@ -282,15 +282,15 @@ export const ResultsTable = memo(({
                       : 'none'
                   }
                   className={cn(
-                    'px-4 py-4 font-semibold uppercase tracking-wider transition-colors',
-                    sortConfig.key === col.key ? 'text-emerald-500' : 'text-zinc-500'
+                    'px-4 py-4 font-semibold tracking-normal transition-colors',
+                    sortConfig.key === col.key ? 'text-zinc-200' : 'text-zinc-500'
                   )}
                 >
                   <button
                     type="button"
                     onClick={() => handleSort(col.key)}
                     title={`Sort by ${col.label}`}
-                    className="flex items-center group cursor-pointer hover:text-zinc-300 transition-colors rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+                    className="flex items-center group cursor-pointer hover:text-zinc-300 transition-colors rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
                   >
                     {col.label}
                     <SortIcon colKey={col.key} />
@@ -299,12 +299,12 @@ export const ResultsTable = memo(({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-900 border-none">
+          <tbody className="divide-y divide-zinc-800 border-none">
             {processedOptions.map((opt, i) => (
               <tr key={i} className="group hover:bg-zinc-900/30 transition-colors">
                 <td className="px-4 py-4 text-zinc-400 font-medium">{opt.expiration}</td>
                 <td className="px-4 py-4">
-                   <span className="px-2 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded text-emerald-500 font-bold font-mono text-[10px]">
+                   <span className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-zinc-300 font-medium font-mono text-[11px]">
                      {opt.daysToExpiration}d
                    </span>
                 </td>
