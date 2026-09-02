@@ -77,7 +77,7 @@ convenience on top of it.
 npm test
 ```
 
-105 tests covering the pure logic — the Black-Scholes helpers, the return and
+115 tests covering the pure logic — the Black-Scholes helpers, the return and
 annualization math, the filter evaluator and both strategy modules. For a coverage
 report:
 
