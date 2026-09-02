@@ -138,20 +138,20 @@ export const ResultsTable = memo(({
 
   const SortIcon = ({ colKey }: { colKey: keyof OptionData }) => {
     if (sortConfig.key !== colKey) return <ArrowUpDown size={10} className="ml-1 opacity-20 group-hover:opacity-50" />;
-    return sortConfig.direction === 'asc' ? <ChevronUp size={10} className="ml-1 text-zinc-300" /> : <ChevronDown size={10} className="ml-1 text-zinc-300" />;
+    return sortConfig.direction === 'asc' ? <ChevronUp size={10} className="ml-1 text-fg-soft" /> : <ChevronDown size={10} className="ml-1 text-fg-soft" />;
   };
 
   const deltaTone = (delta: number) =>
-    Math.abs(delta) > 0.35 ? 'text-amber-400' : 'text-zinc-400';
+    Math.abs(delta) > 0.35 ? 'text-warn' : 'text-fg-soft';
 
   return (
-    <div className="space-y-4 text-white font-sans">
+    <div className="space-y-4 text-fg font-sans">
       <div className="flex items-center justify-between gap-3 px-1">
-        <h3 className="min-w-0 text-[11px] font-bold tracking-normal text-zinc-500 flex items-center gap-2">
+        <h3 className="min-w-0 text-[11px] font-bold tracking-normal text-dim flex items-center gap-2">
           <TableIcon size={12} className="shrink-0" />
           <span className="truncate">{title}</span>
           {count !== undefined && (
-            <span className="shrink-0 font-mono tracking-normal text-zinc-600">
+            <span className="shrink-0 font-mono tracking-normal text-faint">
               {processedOptions.length}/{count}
             </span>
           )}
@@ -170,7 +170,7 @@ export const ResultsTable = memo(({
                 direction: e.target.value ? (sortConfig.direction ?? 'desc') : null,
               })
             }
-            className="bg-zinc-900 border border-zinc-800 rounded-lg py-2 pl-2.5 pr-7 text-[11px] text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 appearance-none"
+            className="bg-bg-3 border border-line rounded-lg py-2 pl-2.5 pr-7 text-[11px] text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60 appearance-none"
           >
             <option value="">Default order</option>
             {columns.map((col) => (
@@ -187,7 +187,7 @@ export const ResultsTable = memo(({
               })
             }
             aria-label={sortConfig.direction === 'asc' ? 'Sort descending' : 'Sort ascending'}
-            className="h-[34px] w-[34px] flex items-center justify-center bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-300 disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
+            className="h-[34px] w-[34px] flex items-center justify-center bg-bg-3 border border-line rounded-lg text-fg-soft disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60"
           >
             {sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
           </button>
@@ -199,42 +199,42 @@ export const ResultsTable = memo(({
         {visibleOnMobile.map((opt, i) => (
           <li
             key={i}
-            className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-4 space-y-3"
+            className="rounded-lg border border-line bg-bg-2/60 p-4 space-y-3"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-1 min-w-0">
-                <p className="text-base font-bold tracking-tight text-zinc-100">
+                <p className="text-base font-bold tracking-tight text-fg">
                   ${opt.strike.toFixed(2)}
                 </p>
-                <p className="text-[11px] text-zinc-500 flex items-center gap-2">
+                <p className="text-[11px] text-dim flex items-center gap-2">
                   {opt.expiration}
-                  <span className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700 rounded text-zinc-300 font-medium font-mono text-[11px]">
+                  <span className="px-1.5 py-0.5 bg-bg-3 border border-line rounded text-fg-soft font-medium font-mono text-[11px]">
                     {opt.daysToExpiration}d
                   </span>
                 </p>
               </div>
               <div className="text-right shrink-0">
-                <p className="text-lg font-bold tabular-nums text-emerald-400 leading-none">
+                <p className="text-lg font-bold tabular-nums text-a1 leading-none">
                   {opt.annualizedReturn.toFixed(2)}%
                 </p>
-                <p className="text-[11px] tracking-normal text-zinc-600 mt-1">
+                <p className="text-[11px] tracking-normal text-faint mt-1">
                   Ann. return
                 </p>
               </div>
             </div>
 
-            <dl className="grid grid-cols-3 gap-x-3 gap-y-2 pt-3 border-t border-zinc-800">
+            <dl className="grid grid-cols-3 gap-x-3 gap-y-2 pt-3 border-t border-line">
               {CARD_DETAIL_KEYS.map((key) => {
                 const col = byKey[key as string];
                 if (!col) return null;
                 return (
                   <div key={key as string} className="min-w-0">
-                    <dt className="text-[11px] tracking-normal text-zinc-600 truncate">
+                    <dt className="text-[11px] tracking-normal text-faint truncate">
                       {col.label}
                     </dt>
                     <dd
                       className={cn(
-                        'font-mono text-[11px] text-zinc-300 truncate',
+                        'font-mono text-[11px] text-fg-soft truncate',
                         key === 'delta' && deltaTone(opt.delta)
                       )}
                     >
@@ -252,20 +252,20 @@ export const ResultsTable = memo(({
         <button
           type="button"
           onClick={() => setMobilePageCount((n) => n + 1)}
-          className="md:hidden w-full py-3.5 rounded-lg border border-zinc-800 bg-zinc-900/60 text-[11px] font-bold tracking-normal text-zinc-300 hover:bg-zinc-900 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
+          className="md:hidden w-full py-3.5 rounded-lg border border-line bg-bg-2 text-[11px] font-bold tracking-normal text-fg-soft hover:bg-bg-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60"
         >
           Show {Math.min(MOBILE_PAGE_SIZE, hiddenOnMobile)} more
-          <span className="text-zinc-600 font-mono normal-case tracking-normal ml-2">
+          <span className="text-faint font-mono normal-case tracking-normal ml-2">
             {hiddenOnMobile.toLocaleString()} left
           </span>
         </button>
       )}
 
       {/* -------------------------------------------------- desktop: table */}
-      <div className="hidden md:block overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/60 overflow-y-auto max-h-[600px] scrollbar-thin">
+      <div className="hidden md:block overflow-x-auto rounded-lg border border-line bg-bg-2/60 overflow-y-auto max-h-[600px] scrollbar-thin">
         <table className="w-full text-left text-[11px] whitespace-nowrap border-collapse">
-          <thead className="bg-zinc-950 text-zinc-500 sticky top-0 z-10">
-            <tr className="border-b border-zinc-800">
+          <thead className="bg-bg text-dim sticky top-0 z-10">
+            <tr className="border-b border-line">
               {columns.map((col) => (
                 <th
                   key={col.key}
@@ -283,14 +283,14 @@ export const ResultsTable = memo(({
                   }
                   className={cn(
                     'px-4 py-4 font-semibold tracking-normal transition-colors',
-                    sortConfig.key === col.key ? 'text-zinc-200' : 'text-zinc-500'
+                    sortConfig.key === col.key ? 'text-fg' : 'text-dim'
                   )}
                 >
                   <button
                     type="button"
                     onClick={() => handleSort(col.key)}
                     title={`Sort by ${col.label}`}
-                    className="flex items-center group cursor-pointer hover:text-zinc-300 transition-colors rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+                    className="flex items-center group cursor-pointer hover:text-fg-soft transition-colors rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60/70 focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
                   >
                     {col.label}
                     <SortIcon colKey={col.key} />
@@ -299,35 +299,35 @@ export const ResultsTable = memo(({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-800 border-none">
+          <tbody className="divide-y divide-line-soft border-none">
             {processedOptions.map((opt, i) => (
-              <tr key={i} className="group hover:bg-zinc-900/30 transition-colors">
-                <td className="px-4 py-4 text-zinc-400 font-medium">{opt.expiration}</td>
+              <tr key={i} className="group hover:bg-bg-3/30 transition-colors">
+                <td className="px-4 py-4 text-fg-soft font-medium">{opt.expiration}</td>
                 <td className="px-4 py-4">
-                   <span className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-zinc-300 font-medium font-mono text-[11px]">
+                   <span className="px-2 py-1 bg-bg-3 border border-line rounded text-fg-soft font-medium font-mono text-[11px]">
                      {opt.daysToExpiration}d
                    </span>
                 </td>
-                <td className="px-4 py-4 font-bold text-zinc-100 tracking-tight">${opt.strike.toFixed(2)}</td>
-                <td className="px-4 py-4 text-zinc-300 font-mono">${opt.lastPrice.toFixed(2)}</td>
+                <td className="px-4 py-4 font-bold text-fg tracking-tight">${opt.strike.toFixed(2)}</td>
+                <td className="px-4 py-4 text-fg-soft font-mono">${opt.lastPrice.toFixed(2)}</td>
                 <td className="px-4 py-4">
                   <span className={cn('font-mono', deltaTone(opt.delta))}>
                     {opt.delta.toFixed(3)}
                   </span>
                 </td>
-                <td className="px-4 py-4 text-zinc-500 font-mono">{opt.iv.toFixed(1)}%</td>
-                <td className="px-4 py-4 text-zinc-500 font-mono">{opt.moneyness.toFixed(1)}%</td>
-                <td className="px-4 py-4 text-zinc-600 font-mono">{opt.openInterest.toLocaleString()}</td>
-                <td className="px-4 py-4 text-zinc-600 font-mono">{opt.volume.toLocaleString()}</td>
-                <td className="px-4 py-4 text-zinc-400 font-mono">{opt.maxContracts || '—'}</td>
-                <td className="px-4 py-4 text-zinc-500 font-mono">
+                <td className="px-4 py-4 text-dim font-mono">{opt.iv.toFixed(1)}%</td>
+                <td className="px-4 py-4 text-dim font-mono">{opt.moneyness.toFixed(1)}%</td>
+                <td className="px-4 py-4 text-faint font-mono">{opt.openInterest.toLocaleString()}</td>
+                <td className="px-4 py-4 text-faint font-mono">{opt.volume.toLocaleString()}</td>
+                <td className="px-4 py-4 text-fg-soft font-mono">{opt.maxContracts || '—'}</td>
+                <td className="px-4 py-4 text-dim font-mono">
                   {byKey.totalCapitalRequired.format(opt)}
                 </td>
-                <td className="px-4 py-4 text-zinc-500 font-mono">
+                <td className="px-4 py-4 text-dim font-mono">
                   {byKey.totalPremiumReceived.format(opt)}
                 </td>
                 <td className="px-4 py-4 text-right">
-                  <span className="text-emerald-400 font-bold tabular-nums text-sm">
+                  <span className="text-a1 font-bold tabular-nums text-sm">
                     {opt.annualizedReturn.toFixed(2)}%
                   </span>
                 </td>

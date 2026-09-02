@@ -70,22 +70,22 @@ function ChartTooltip({
   const y = option[yAxisKey];
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-black/95 px-3 py-2.5 shadow-xl backdrop-blur-sm">
-      <p className="text-[11px] font-bold text-zinc-100 tracking-tight">
+    <div className="rounded-lg border border-line bg-black/95 px-3 py-2.5 shadow-xl backdrop-blur-sm">
+      <p className="text-[11px] font-bold text-fg tracking-tight">
         ${option.strike.toFixed(2)}
-        <span className="ml-2 font-mono text-[11px] font-normal text-zinc-500">
+        <span className="ml-2 font-mono text-[11px] font-normal text-dim">
           {option.expiration}
         </span>
       </p>
       <dl className="mt-2 space-y-1">
         <div className="flex items-center justify-between gap-4">
-          <dt className="text-[11px] tracking-normal text-zinc-600">{xAxisName}</dt>
-          <dd className="font-mono text-[11px] text-zinc-300">
+          <dt className="text-[11px] tracking-normal text-faint">{xAxisName}</dt>
+          <dd className="font-mono text-[11px] text-fg-soft">
             {typeof x === 'number' ? formatTick(x) : String(x)}
           </dd>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <dt className="text-[11px] tracking-normal text-zinc-600">{yAxisName}</dt>
+          <dt className="text-[11px] tracking-normal text-faint">{yAxisName}</dt>
           <dd className="font-mono text-[11px] font-bold" style={{ color }}>
             {typeof y === 'number' ? y.toFixed(2) : String(y)}
             {unit}
@@ -128,7 +128,7 @@ export const AnalysisChart = memo(
     const maxReturn = returns.length ? Math.max(...returns) : 0;
 
     return (
-      <div className="group relative overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 md:p-6 text-white font-sans transition-colors hover:border-zinc-800">
+      <div className="group relative overflow-hidden rounded-lg border border-line bg-bg-2 p-4 md:p-6 text-fg font-sans transition-colors hover:border-line">
         {/* A wash of the series colour, so the two charts are distinguishable
             at a glance rather than by reading their titles. */}
         <div
@@ -138,7 +138,7 @@ export const AnalysisChart = memo(
         />
 
         <div className="relative space-y-4">
-          <h4 className="flex items-center gap-2 text-xs font-bold tracking-normal text-zinc-500">
+          <h4 className="flex items-center gap-2 text-xs font-bold tracking-normal text-dim">
             <Icon size={13} style={{ color }} /> {title}
           </h4>
 
@@ -215,7 +215,7 @@ export const AnalysisChart = memo(
                 {Array.from({ length: 16 }).map((_, i) => (
                   <div
                     key={i}
-                    className="flex-1 animate-pulse rounded-sm bg-zinc-900"
+                    className="flex-1 animate-pulse rounded-sm bg-bg-3"
                     style={{
                       height: `${25 + ((i * 37) % 60)}%`,
                       animationDelay: `${i * 40}ms`,

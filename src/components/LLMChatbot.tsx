@@ -117,7 +117,7 @@ export default function LLMChatbot({
       <button
         onClick={() => setIsOpen(true)}
         aria-label="Open the AI assistant"
-        className={`fixed bottom-5 right-5 md:bottom-6 md:right-6 flex items-center justify-center w-14 h-14 bg-zinc-100 text-zinc-900 rounded-full shadow-lg hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 z-50`}
+        className={`fixed bottom-5 right-5 md:bottom-6 md:right-6 flex items-center justify-center w-14 h-14 bg-zinc-100 text-zinc-900 rounded-full shadow-lg hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg z-50`}
         style={{
           transition: 'transform 0.2s ease, opacity 0.2s ease',
           transform: isOpen ? 'scale(0)' : 'scale(1)',
@@ -133,7 +133,7 @@ export default function LLMChatbot({
         role="dialog"
         aria-label="AI assistant"
         aria-hidden={!isOpen}
-        className={`fixed inset-x-3 bottom-3 top-16 sm:inset-x-auto sm:top-auto sm:bottom-6 sm:right-6 sm:w-[400px] sm:h-[600px] bg-zinc-950 border border-zinc-800 rounded-lg shadow-xl flex-col overflow-hidden z-50`}
+        className={`fixed inset-x-3 bottom-3 top-16 sm:inset-x-auto sm:top-auto sm:bottom-6 sm:right-6 sm:w-[400px] sm:h-[600px] bg-bg border border-line rounded-lg shadow-xl flex-col overflow-hidden z-50`}
         style={{
           display: 'flex',
           transition: 'opacity 0.3s ease, transform 0.3s ease',
@@ -143,20 +143,20 @@ export default function LLMChatbot({
         }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50 shrink-0">
+        <div className="flex items-center justify-between p-4 border-b border-line bg-bg-2 shrink-0">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-zinc-800 text-zinc-300 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-full bg-bg-3 text-fg-soft flex items-center justify-center">
               <Bot size={18} />
             </div>
             <div>
-              <h3 className="font-bold text-white text-sm">AI Assistant</h3>
-              <p className="text-[11px] text-zinc-400 tracking-normal">{subtitle}</p>
+              <h3 className="font-bold text-fg text-sm">AI Assistant</h3>
+              <p className="text-[11px] text-fg-soft tracking-normal">{subtitle}</p>
             </div>
           </div>
           <button
             onClick={() => setIsOpen(false)}
             aria-label="Close the assistant"
-            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
+            className="p-2 text-fg-soft hover:text-fg hover:bg-bg-3 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60"
           >
             <X size={20} />
           </button>
@@ -166,8 +166,8 @@ export default function LLMChatbot({
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-50">
-              <MessageSquare size={48} className="text-zinc-600" />
-              <p className="text-sm text-zinc-400 max-w-[250px]">
+              <MessageSquare size={48} className="text-faint" />
+              <p className="text-sm text-fg-soft max-w-[250px]">
                 Ask me to filter options by ticker, expiry, delta, or strike. I can also give recommendations!
               </p>
             </div>
@@ -176,17 +176,17 @@ export default function LLMChatbot({
             const invocations: ToolInvocation[] | undefined = (m as Message).toolInvocations;
             return (
               <div key={m.id} className={`flex gap-3 ${m.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${m.role === 'user' ? 'bg-zinc-800 text-white' : 'bg-zinc-800 text-zinc-300'}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${m.role === 'user' ? 'bg-bg-3 text-fg' : 'bg-bg-3 text-fg-soft'}`}>
                   {m.role === 'user' ? <User size={16} /> : <Bot size={16} />}
                 </div>
                 <div className={`flex flex-col gap-1 max-w-[75%] ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
                   {m.content && (
-                    <div className={`p-3 rounded-lg text-sm leading-relaxed ${m.role === 'user' ? 'bg-zinc-800 text-white rounded-tr-sm' : 'bg-zinc-900 border border-zinc-800 text-zinc-200 rounded-tl-sm'}`}>
+                    <div className={`p-3 rounded-lg text-sm leading-relaxed ${m.role === 'user' ? 'bg-bg-3 text-fg rounded-tr-sm' : 'bg-bg-3 border border-line text-fg rounded-tl-sm'}`}>
                       {m.content}
                     </div>
                   )}
                   {invocations?.map((inv) => (
-                    <div key={inv.toolCallId} className="bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-xs text-zinc-400 flex items-center gap-2">
+                    <div key={inv.toolCallId} className="bg-bg-3 border border-line rounded-lg p-2 text-xs text-fg-soft flex items-center gap-2">
                       {inv.state === 'result' ? (
                         String(inv.result).startsWith('Filter rejected:') ? (
                           <>
@@ -195,13 +195,13 @@ export default function LLMChatbot({
                           </>
                         ) : (
                           <>
-                            <span className="text-zinc-400">✓</span>
+                            <span className="text-fg-soft">✓</span>
                             <span>{inv.result}</span>
                           </>
                         )
                       ) : (
                         <>
-                          <Loader2 className="w-3 h-3 animate-spin text-zinc-400" />
+                          <Loader2 className="w-3 h-3 animate-spin text-fg-soft" />
                           <span>Running: {inv.toolName}…</span>
                         </>
                       )}
@@ -213,10 +213,10 @@ export default function LLMChatbot({
           })}
           {isLoading && (
             <div className="flex gap-3">
-              <div className="w-8 h-8 rounded-full bg-zinc-800 text-zinc-300 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-full bg-bg-3 text-fg-soft flex items-center justify-center shrink-0">
                 <Bot size={16} />
               </div>
-              <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800 rounded-tl-sm flex items-center gap-1.5">
+              <div className="p-3 rounded-lg bg-bg-3 border border-line rounded-tl-sm flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-zinc-500 animate-bounce" style={{ animationDelay: '0ms' }} />
                 <span className="w-2 h-2 rounded-full bg-zinc-500 animate-bounce" style={{ animationDelay: '150ms' }} />
                 <span className="w-2 h-2 rounded-full bg-zinc-500 animate-bounce" style={{ animationDelay: '300ms' }} />
@@ -232,20 +232,20 @@ export default function LLMChatbot({
         </div>
 
         {/* Input area */}
-        <div className="p-4 bg-zinc-900/50 border-t border-zinc-800 shrink-0">
+        <div className="p-4 bg-bg-2 border-t border-line shrink-0">
           <form onSubmit={handleSubmit} className="relative flex items-center">
             <input
               value={input}
               onChange={handleInputChange}
               placeholder="Ask me to filter the options..."
-              className="w-full bg-zinc-950 border border-zinc-800 text-white text-sm rounded-md py-3 pl-4 pr-12 focus:outline-none focus:border-zinc-500 transition-colors"
+              className="w-full bg-bg border border-line text-fg text-sm rounded-md py-3 pl-4 pr-12 focus:outline-none focus:border-zinc-500 transition-colors"
               disabled={isLoading}
             />
             <button
               type="submit"
               disabled={!input.trim() || isLoading}
               aria-label="Send message"
-              className="absolute right-2 p-2 bg-zinc-100 text-zinc-900 rounded-md hover:bg-white disabled:opacity-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+              className="absolute right-2 p-2 bg-zinc-100 text-zinc-900 rounded-md hover:bg-white disabled:opacity-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
             >
               <Send size={16} />
             </button>

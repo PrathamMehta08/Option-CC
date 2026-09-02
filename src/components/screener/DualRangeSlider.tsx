@@ -39,22 +39,26 @@ export const DualRangeSlider = memo(({ min, max, value, onChange, label, unit = 
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-1">
+      {/* The label and the current range are rendered by the caller now — the
+          value boxes this used to draw duplicated them. */}
       {label && (
-        <label className="text-[11px] font-bold text-zinc-500 tracking-normal leading-none block">{label}</label>
+        <label className="block font-mono text-[11px] text-faint leading-none">
+          {label}
+          <span className="ml-2 text-fg-soft">
+            {unit}{localValue[0]}–{unit}{localValue[1]}
+          </span>
+        </label>
       )}
-      <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
-        <div className="bg-zinc-900 py-1.5 rounded-lg border border-zinc-800 text-center text-zinc-100 font-bold">{unit}{localValue[0]}</div>
-        <div className="bg-zinc-900 py-1.5 rounded-lg border border-zinc-800 text-center text-zinc-100 font-bold">{unit}{localValue[1]}</div>
-      </div>
       <div className="dual-range-container">
-        {/* Track Background */}
-        <div className="absolute w-full h-1.5 bg-zinc-900 rounded-full border border-zinc-800" />
-        
-        {/* Active Range Highlight */}
-        <div 
-          className="absolute h-1.5 bg-zinc-400 rounded-full z-0" 
+        {/* Track */}
+        <div className="absolute w-full h-1 bg-bg-3 rounded-full border border-line-soft" />
+
+        {/* Selected span, in the accent gradient */}
+        <div
+          className="absolute h-1 rounded-full z-0"
           style={{
+            background: 'var(--grad)',
             left: `${((localValue[0] - minVal) / (maxVal - minVal || 1)) * 100}%`,
             right: `${100 - ((localValue[1] - minVal) / (maxVal - minVal || 1)) * 100}%`
           }}

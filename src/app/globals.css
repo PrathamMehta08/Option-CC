@@ -13,24 +13,69 @@
   --font-mono: var(--font-mono-custom), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-/* A near-black ground rather than pure #000: on an OLED panel pure black makes
-   every border and surface read as a hard edge, which is what gives a dark UI
-   its "gaming peripheral" look. A few points of lightness gives the surfaces
-   room to sit above the page. */
+/* Palette follows prathamm.com: a blue-tinted near-black with two lifted
+   surface steps, borders a shade above them, and — the part that actually does
+   the work — body text that is soft grey rather than white, so the few white
+   and accented things carry real emphasis.
+   Its violet/teal pair becomes green/teal here. */
 :root {
-  --background: #0a0a0b;
-  --foreground: #ededef;
-  --surface: #111113;
-  --surface-raised: #16161a;
-  --border: #232327;
-  --muted: #8b8b93;
-  /* Reserved for figures that mean something — a positive return — not chrome. */
-  --positive: #34d399;
+  --bg: #08090c;
+  --bg-2: #0d0f14;
+  --bg-3: #12151d;
+  --line: #1c1f28;
+  --line-soft: #15181f;
+
+  --fg: #f3f4f7;
+  --fg-soft: #a6abb9;
+  --dim: #7d8397;
+  --faint: #656b80;
+
+  /* a1 leads, a2 closes the gradient. */
+  --a1: #34d399;
+  --a2: #2fd4c6;
+  --grad: linear-gradient(100deg, var(--a1), var(--a2));
+
+  --warn: #f0b429;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-2: var(--bg-2);
+  --color-bg-3: var(--bg-3);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-fg: var(--fg);
+  --color-fg-soft: var(--fg-soft);
+  --color-dim: var(--dim);
+  --color-faint: var(--faint);
+  --color-a1: var(--a1);
+  --color-a2: var(--a2);
+  --color-warn: var(--warn);
+}
+
+/* Accent text, the way the reference site sets its lead line. */
+.text-grad {
+  background: var(--grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* The short rule that precedes a section label on prathamm.com. */
+.rule::before {
+  content: '';
+  display: inline-block;
+  width: 18px;
+  height: 1px;
+  margin-right: 10px;
+  vertical-align: middle;
+  background: var(--grad);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--bg);
+  color: var(--fg-soft);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -60,13 +105,13 @@ table,
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: #27272a;
+  background: var(--line);
   border-radius: 20px;
-  border: 2px solid #0a0a0b; /* Creates 'floating' effect */
+  border: 2px solid #08090c; /* Creates 'floating' effect */
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46;
+  background: #2a2f3a;
 }
 
 /* Global scrollbar for the page */
@@ -79,13 +124,13 @@ table,
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #18181b;
+  background: var(--line-soft);
   border-radius: 10px;
-  border: 2px solid #0a0a0b;
+  border: 2px solid #08090c;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #27272a;
+  background: var(--line);
 }
 
 .scrolling-touch {
@@ -106,17 +151,17 @@ input[type="range"].premium-slider {
 
 /* Track styling */
 input[type="range"].premium-slider::-webkit-slider-runnable-track {
-  background: #18181b;
+  background: var(--bg-3);
   height: 6px;
   border-radius: 999px;
-  border: 1px solid #27272a;
+  border: 1px solid #1c1f28;
 }
 
 input[type="range"].premium-slider::-moz-range-track {
-  background: #18181b;
+  background: var(--bg-3);
   height: 6px;
   border-radius: 999px;
-  border: 1px solid #27272a;
+  border: 1px solid #1c1f28;
 }
 
 /* Thumb styling - Large and easier to grab */
@@ -124,38 +169,38 @@ input[type="range"].premium-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   margin-top: -8px; /* Centers thumb on the 6px track */
-  background-color: #ffffff;
+  background-color: var(--a1);
   height: 22px;
   width: 22px;
   border-radius: 50%;
-  border: 4px solid #0a0a0b;
-  box-shadow: 0 0 0 1px #3f3f46, 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  border: 4px solid #0d0f14;
+  box-shadow: 0 0 0 1px var(--line), 0 2px 8px -2px rgb(0 0 0 / 0.6);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 input[type="range"].premium-slider.accent-emerald::-webkit-slider-thumb {
-  background-color: #d4d4d8;
+  background-color: var(--a1);
 }
 
 input[type="range"].premium-slider:active::-webkit-slider-thumb {
   transform: scale(1.15);
-  box-shadow: 0 0 0 1px #52525b;
+  box-shadow: 0 0 0 3px rgb(52 211 153 / 0.18);
   filter: brightness(1.1);
 }
 
 /* Firefox */
 input[type="range"].premium-slider::-moz-range-thumb {
-  background-color: #ffffff;
+  background-color: var(--a1);
   height: 22px;
   width: 22px;
   border-radius: 50%;
-  border: 4px solid #0a0a0b;
-  box-shadow: 0 0 0 1px #3f3f46;
+  border: 4px solid #0d0f14;
+  box-shadow: 0 0 0 1px var(--line);
   transition: all 0.2s ease;
 }
 
 input[type="range"].premium-slider.accent-emerald::-moz-range-thumb {
-  background-color: #d4d4d8;
+  background-color: var(--a1);
 }
 
 input[type="range"].premium-slider:active::-moz-range-thumb {
@@ -185,15 +230,15 @@ input[type="range"].premium-slider:active::-moz-range-thumb {
   height: 24px;
   width: 24px;
   border-radius: 50%;
-  background: #ffffff;
-  border: 4px solid #0a0a0b;
-  box-shadow: 0 0 0 1px #3f3f46, 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  background: var(--a1);
+  border: 4px solid #0d0f14;
+  box-shadow: 0 0 0 1px var(--line), 0 2px 8px -2px rgb(0 0 0 / 0.6);
   cursor: pointer;
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .dual-range-input.accent-emerald::-webkit-slider-thumb {
-  background: #d4d4d8;
+  background: var(--a1);
 }
 
 .dual-range-input::-webkit-slider-thumb:active {
@@ -206,12 +251,18 @@ input[type="range"].premium-slider:active::-moz-range-thumb {
   height: 24px;
   width: 24px;
   border-radius: 50%;
-  background: #ffffff;
-  border: 4px solid #0a0a0b;
-  box-shadow: 0 0 0 1px #3f3f46;
+  background: var(--a1);
+  border: 4px solid #0d0f14;
+  box-shadow: 0 0 0 1px var(--line);
   cursor: pointer;
 }
 
 .dual-range-input.accent-emerald::-moz-range-thumb {
-  background: #d4d4d8;
+  background: var(--a1);
+}
+
+/* premium-slider filled track: colour the run to the left of the thumb so a
+   single-value slider reads the same way the dual range does. */
+input[type="range"].premium-slider::-webkit-slider-runnable-track {
+  background: linear-gradient(to right, var(--a1) 0%, var(--a2) var(--fill, 30%), var(--bg-3) var(--fill, 30%));
 }
