@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useChat } from '@ai-sdk/react';
+import type { Message, ToolInvocation } from 'ai';
 import { MessageSquare, X, Send, Bot, User, Loader2, AlertTriangle } from 'lucide-react';
 import { parseCustomFilter, describeFilter, type CustomFilter } from '@/lib/filters';
 import type { ScreenedOption } from '@/lib/optionChain';
@@ -50,7 +51,7 @@ export default function LLMChatbot({
     let changed = false;
     for (const message of messages) {
       if (message.role !== 'assistant') continue;
-      const invocations = (message as any).toolInvocations;
+      const invocations: ToolInvocation[] | undefined = message.toolInvocations;
       if (!invocations) continue;
       for (const inv of invocations) {
         if (inv.state === 'call') {
@@ -167,7 +168,7 @@ export default function LLMChatbot({
             </div>
           )}
           {messages.map((m) => {
-            const invocations = (m as any).toolInvocations as any[] | undefined;
+            const invocations: ToolInvocation[] | undefined = (m as Message).toolInvocations;
             return (
               <div key={m.id} className={`flex gap-3 ${m.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${m.role === 'user' ? 'bg-zinc-800 text-white' : 'bg-emerald-500/20 text-emerald-500'}`}>
@@ -179,7 +180,7 @@ export default function LLMChatbot({
                       {m.content}
                     </div>
                   )}
-                  {invocations?.map((inv: any) => (
+                  {invocations?.map((inv) => (
                     <div key={inv.toolCallId} className="bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-xs text-zinc-400 flex items-center gap-2">
                       {inv.state === 'result' ? (
                         String(inv.result).startsWith('Filter rejected:') ? (

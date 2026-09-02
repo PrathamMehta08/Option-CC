@@ -1,534 +1,32 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useDeferredValue, memo, useRef, useCallback } from 'react';
-import { 
-  Search, 
-  DollarSign, 
-  Calendar, 
-  Percent, 
-  TrendingUp, 
+import React, { useState, useEffect, useMemo, useDeferredValue, useRef, useCallback } from 'react';
+import {
+  Calendar,
+  TrendingUp,
   Info,
-  ArrowUpRight,
-  Filter,
   BarChart3,
   Loader2,
-  ChevronDown,
-  ChevronUp,
   Settings2,
-  Table as TableIcon,
-  Clock,
   LayoutGrid,
-  ArrowUpDown,
   X,
-  Delete
 } from 'lucide-react';
-import { 
-  ScatterChart, 
-  Scatter, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  ResponsiveContainer,
-  CartesianGrid,
-  Cell
-} from 'recharts';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-import LLMChatbot from '../components/LLMChatbot';
+import LLMChatbot from '@/components/LLMChatbot';
+import { AnalysisChart } from '@/components/screener/AnalysisChart';
+import { ResultsTable } from '@/components/screener/ResultsTable';
+import { DualRangeSlider } from '@/components/screener/DualRangeSlider';
+import { CustomKeypad } from '@/components/screener/CustomKeypad';
+import type { SortConfig } from '@/components/screener/types';
+import { cn, formatNumberWithCommas, formatExpirationLabel } from '@/lib/ui';
 import { STRATEGIES, STRATEGY_IDS, DEFAULT_STRATEGY_ID, type StrategyId } from '@/lib/strategies';
 import type { ScreenedOption, ScreenerResponse } from '@/lib/optionChain';
 import { matchesFilter, describeFilter, type CustomFilter } from '@/lib/filters';
-// --- Utils ---
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
 
-const formatNumberWithCommas = (value: string | number) => {
-  const numericString = value.toString().replace(/[^0-9.]/g, '');
-  const parts = numericString.split('.');
-  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return parts.join('.');
-};
-
-// --- Data Types ---
 /** The enriched row the screener API returns. Shared with the server. */
 type OptionData = ScreenedOption;
 
 type ApiResponse = ScreenerResponse & { error?: string };
 
-type SortConfig = {
-  key: keyof OptionData | null;
-  direction: 'asc' | 'desc' | null;
-};
-
-// --- Memoized Components ---
-
-const AnalysisChart = memo(({ title, icon: Icon, data, xAxisKey, xAxisName, yAxisKey, yAxisName, unit, color, seriesName }: any) => {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  
-  return (
-  <div className="bg-zinc-950 border border-zinc-900 p-4 md:p-6 space-y-4 rounded-xl text-white font-sans">
-    <h4 className="font-medium text-zinc-500 flex items-center gap-2 text-[10px] md:text-sm uppercase tracking-wider">
-      <Icon size={14} /> {title}
-    </h4>
-    <div className="h-[250px] md:h-[300px] w-full">
-      {mounted ? (
-        <ResponsiveContainer width="100%" height="100%">
-          <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: -20 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#0a0a0a" vertical={false} />
-            <XAxis type="number" dataKey={xAxisKey} name={xAxisName} stroke="#27272a" fontSize={10} tickLine={false} axisLine={false} />
-            <YAxis type="number" dataKey={yAxisKey} name={yAxisName} unit={unit} stroke="#27272a" fontSize={10} tickLine={false} axisLine={false} />
-            <Tooltip 
-              cursor={{ strokeDasharray: '3 3' }}
-              contentStyle={{ background: '#000', border: '1px solid #18181b', borderRadius: '4px', fontSize: '10px' }}
-              itemStyle={{ color }}
-            />
-            <Scatter name={seriesName} data={data}>
-                {data.map((entry: any, index: number) => (
-                <Cell key={`cell-${index}`} fill={color} fillOpacity={0.6} />
-              ))}
-            </Scatter>
-          </ScatterChart>
-        </ResponsiveContainer>
-      ) : (
-        <div className="w-full h-full bg-zinc-950/50 animate-pulse rounded-lg flex items-center justify-center">
-          <Loader2 className="text-zinc-800 animate-spin" size={24} />
-        </div>
-      )}
-    </div>
-  </div>
-);
-});
-AnalysisChart.displayName = 'AnalysisChart';
-
-const ResultsTable = memo(({ 
-  options, title, count, externalSortConfig, onExternalSortChange, capitalColumnLabel
-}: {
-  options: OptionData[], title: string, count?: number,
-  externalSortConfig?: SortConfig, onExternalSortChange?: (config: SortConfig) => void,
-  capitalColumnLabel: string
-}) => {
-  const [localSortConfig, setLocalSortConfig] = useState<SortConfig>({ key: null, direction: null });
-  const sortConfig = externalSortConfig !== undefined ? externalSortConfig : localSortConfig;
-
-  const handleSort = (key: keyof OptionData) => {
-    let direction: 'asc' | 'desc' | null = 'desc';
-    if (sortConfig.key === key && sortConfig.direction === 'desc') {
-      direction = 'asc';
-    } else if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = null;
-    }
-    if (onExternalSortChange) {
-      onExternalSortChange({ key, direction });
-    } else {
-      setLocalSortConfig({ key, direction });
-    }
-  };
-
-  const processedOptions = useMemo(() => {
-    let sorted = [...options];
-
-    if (sortConfig.key && sortConfig.direction) {
-      sorted.sort((a, b) => {
-        const aVal = a[sortConfig.key!];
-        const bVal = b[sortConfig.key!];
-        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
-        return 0;
-      });
-    }
-
-    return sorted;
-  }, [options, sortConfig]);
-
-  const SortIcon = ({ colKey }: { colKey: keyof OptionData }) => {
-    if (sortConfig.key !== colKey) return <ArrowUpDown size={10} className="ml-1 opacity-20 group-hover:opacity-50" />;
-    return sortConfig.direction === 'asc' ? <ChevronUp size={10} className="ml-1 text-emerald-500" /> : <ChevronDown size={10} className="ml-1 text-emerald-500" />;
-  };
-
-  return (
-    <div className="space-y-4 text-white font-sans overflow-hidden">
-      <div className="flex items-center justify-between px-1">
-        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 flex items-center gap-2">
-          <TableIcon size={12} /> {title} {count !== undefined && `(${processedOptions.length}/${count})`}
-        </h3>
-      </div>
-
-      <div className="overflow-x-auto rounded-xl border border-zinc-900 bg-black/50 overflow-y-auto max-h-[600px] scrollbar-thin">
-        <table className="w-full text-left text-[10px] md:text-[11px] whitespace-nowrap border-collapse">
-          <thead className="bg-zinc-950 text-zinc-500 sticky top-0 z-10">
-            <tr className="border-b border-zinc-900">
-              {[
-                { label: 'Expiry', key: 'expiration' },
-                { label: 'DTE', key: 'daysToExpiration' },
-                { label: 'Strike', key: 'strike' },
-                { label: 'Premium', key: 'lastPrice' },
-                { label: 'Delta', key: 'delta' },
-                { label: 'IV', key: 'iv' },
-                { label: 'Moneyness', key: 'moneyness' },
-                { label: 'OI', key: 'openInterest' },
-                { label: 'Vol', key: 'volume' },
-                { label: 'Contracts', key: 'maxContracts' },
-                { label: capitalColumnLabel, key: 'totalCapitalRequired' },
-                { label: 'Total Prem', key: 'totalPremiumReceived' },
-                { label: 'Ann. Return', key: 'annualizedReturn' },
-              ].map((col) => (
-                <th 
-                  key={col.key} 
-                  className={cn(
-                    "px-4 py-4 font-semibold uppercase tracking-wider cursor-pointer group hover:text-zinc-300 transition-colors",
-                    sortConfig.key === col.key && "text-emerald-500"
-                  )}
-                  onClick={() => handleSort(col.key as keyof OptionData)}
-                >
-                  <div className="flex items-center">
-                    {col.label}
-                    <SortIcon colKey={col.key as keyof OptionData} />
-                  </div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-900 border-none">
-            {processedOptions.map((opt, i) => (
-              <tr key={i} className="group hover:bg-zinc-900/30 transition-colors">
-                <td className="px-4 py-4 text-zinc-400 font-medium">{opt.expiration}</td>
-                <td className="px-4 py-4">
-                   <span className="px-2 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded text-emerald-500 font-bold font-mono text-[10px]">
-                     {opt.daysToExpiration}d
-                   </span>
-                </td>
-                <td className="px-4 py-4 font-bold text-zinc-100 tracking-tight">${opt.strike.toFixed(2)}</td>
-                <td className="px-4 py-4 text-zinc-300 font-mono">${opt.lastPrice.toFixed(2)}</td>
-                <td className="px-4 py-4">
-                  <span className={cn(
-                    "font-mono",
-                    Math.abs(opt.delta) > 0.35 ? "text-amber-500" : "text-emerald-500/80"
-                  )}>
-                    {opt.delta.toFixed(3)}
-                  </span>
-                </td>
-                <td className="px-4 py-4 text-zinc-500 font-mono">{opt.iv.toFixed(1)}%</td>
-                <td className="px-4 py-4 text-zinc-500 font-mono">{opt.moneyness.toFixed(1)}%</td>
-                <td className="px-4 py-4 text-zinc-600 font-mono">{opt.openInterest.toLocaleString()}</td>
-                <td className="px-4 py-4 text-zinc-600 font-mono">{opt.volume.toLocaleString()}</td>
-                {/* A dash beats a $0 the user has to decode. */}
-                <td className="px-4 py-4 text-zinc-400 font-mono">{opt.maxContracts || '—'}</td>
-                <td className="px-4 py-4 text-zinc-500 font-mono">
-                  {opt.maxContracts > 0 ? `$${opt.totalCapitalRequired.toLocaleString()}` : '—'}
-                </td>
-                <td className="px-4 py-4 text-zinc-500 font-mono">
-                  {opt.maxContracts > 0
-                    ? `$${opt.totalPremiumReceived.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-                    : '—'}
-                </td>
-                <td className="px-4 py-4 text-right">
-                  <span className="text-emerald-400 font-bold tabular-nums text-sm">
-                    {opt.annualizedReturn.toFixed(2)}%
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-});
-ResultsTable.displayName = 'ResultsTable';
-
-const DualRangeSlider = memo(({ min, max, value, onChange, label, unit = "$" }: { min: number, max: number, value: [number, number], onChange: (val: [number, number]) => void, label?: string, unit?: string }) => {
-  const [localValue, setLocalValue] = useState(value);
-
-  // Sync with parent when it changes externally (e.g. data fetch)
-  useEffect(() => {
-    setLocalValue(value);
-  }, [value[0], value[1]]);
-
-  // Debounced update to parent to keep things snappy
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (localValue[0] !== value[0] || localValue[1] !== value[1]) {
-        onChange(localValue);
-      }
-    }, 50); // Small 50ms debounce for 'live' but efficient feel
-    return () => clearTimeout(timer);
-  }, [localValue, onChange, value]);
-
-  const minVal = Math.min(min, max);
-  const maxVal = Math.max(min, max);
-
-  const handleLowChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseInt(e.target.value);
-    setLocalValue([Math.min(val, localValue[1]), localValue[1]]);
-  };
-
-  const handleHighChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseInt(e.target.value);
-    setLocalValue([localValue[0], Math.max(val, localValue[0])]);
-  };
-
-  return (
-    <div className="space-y-4">
-      {label && (
-        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest leading-none block">{label}</label>
-      )}
-      <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
-        <div className="bg-zinc-900 py-1.5 rounded-lg border border-zinc-800 text-center text-zinc-100 font-bold">{unit}{localValue[0]}</div>
-        <div className="bg-zinc-900 py-1.5 rounded-lg border border-zinc-800 text-center text-zinc-100 font-bold">{unit}{localValue[1]}</div>
-      </div>
-      <div className="dual-range-container">
-        {/* Track Background */}
-        <div className="absolute w-full h-1.5 bg-zinc-900 rounded-full border border-zinc-800" />
-        
-        {/* Active Range Highlight */}
-        <div 
-          className="absolute h-1.5 bg-emerald-500 rounded-full z-0" 
-          style={{
-            left: `${((localValue[0] - minVal) / (maxVal - minVal || 1)) * 100}%`,
-            right: `${100 - ((localValue[1] - minVal) / (maxVal - minVal || 1)) * 100}%`
-          }}
-        />
-
-        <input 
-          type="range" 
-          min={minVal} 
-          max={maxVal} 
-          value={localValue[0]} 
-          onChange={handleLowChange}
-          className="dual-range-input accent-emerald z-10"
-        />
-        <input 
-          type="range" 
-          min={minVal} 
-          max={maxVal} 
-          value={localValue[1]} 
-          onChange={handleHighChange}
-          className="dual-range-input accent-emerald z-20"
-        />
-      </div>
-    </div>
-  );
-});
-DualRangeSlider.displayName = 'DualRangeSlider';
-
-const CustomKeypad = memo(({ 
-  type, 
-  value, 
-  onClose, 
-  onChange,
-  tickerPrice,
-  allExps
-}: { 
-  type: 'months' | 'delta' | 'strike' | 'expirations', 
-  value: any, 
-  onClose: () => void, 
-  onChange: (val: any) => void,
-  tickerPrice?: number,
-  allExps?: string[]
-}) => {
-  // Use local state for the active editing value to prevent immediate parent re-renders
-  const [localValue, setLocalValue] = useState<any>(() => {
-    if (type === 'delta') return Math.abs(value).toString();
-    if (type === 'expirations') return Array.isArray(value) ? [...value] : [];
-    return value.toString();
-  });
-  
-  const [isFirstKey, setIsFirstKey] = useState(true);
-
-  // Sync back to parent for non-immediate types (delta, strike) with a debounce
-  useEffect(() => {
-    if (type === 'delta' || type === 'strike') {
-      const timer = setTimeout(() => {
-        const numeric = parseFloat(localValue);
-        if (!isNaN(numeric)) {
-          onChange(numeric);
-        }
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [localValue, onChange, type]);
-
-  const handleKey = useCallback((key: string) => {
-    setLocalValue((prev: any) => {
-      const str = prev.toString();
-      if (key === 'BACK') {
-        return str.length > 1 ? str.slice(0, -1) : '0';
-      }
-      if (key === '.') {
-        if (!str.includes('.')) return str + '.';
-        return str;
-      }
-      // Numeric key
-      if (isFirstKey) {
-        setIsFirstKey(false);
-        return key;
-      }
-      return str === '0' ? key : str + key;
-    });
-  }, [isFirstKey]);
-
-  const formatDateLabel = useCallback((dateStr: string) => {
-    try {
-      const d = new Date(dateStr + 'T12:00:00');
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    } catch {
-      return dateStr;
-    }
-  }, []);
-
-  // Sub-components as local renders to avoid re-mounting logic issues
-  const MonthsGrid = () => (
-    <div className="flex-1 grid grid-cols-4 grid-rows-4 gap-0.5 p-0.5 bg-zinc-950/50 rounded-xl overflow-hidden min-h-0">
-      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 0].map(m => (
-        <button 
-          key={m}
-          onClick={() => { onChange(m); onClose(); }}
-          className={cn(
-            "text-xl font-medium transition-colors flex items-center justify-center",
-            value === m ? "bg-emerald-500 text-black hover:bg-emerald-400" : "bg-zinc-900/40 hover:bg-zinc-800/60 text-white",
-            m === 0 && "col-start-2 col-span-2"
-          )}
-        >
-          {m}
-        </button>
-      ))}
-    </div>
-  );
-
-  const ExpirationsGrid = () => (
-    <div className="flex-1 overflow-y-auto p-0.5 bg-zinc-950/50 scrollbar-none">
-       <div className="grid grid-cols-3 gap-0.5 rounded-xl overflow-hidden">
-        {allExps?.map((exp: string) => {
-          const isSelected = Array.isArray(localValue) && localValue.includes(exp);
-          return (
-            <button 
-              key={exp}
-              onClick={() => {
-                const current = Array.isArray(localValue) ? localValue : [];
-                const newVal = isSelected 
-                  ? current.filter((e: string) => e !== exp)
-                  : [...current, exp];
-                setLocalValue(newVal);
-                onChange(newVal);
-              }}
-              className={cn(
-                "py-6 flex flex-col items-center justify-center transition-all",
-                isSelected 
-                  ? "bg-emerald-500 text-black shadow-[inset_0_0_20px_rgba(0,0,0,0.1)]" 
-                  : "bg-zinc-900/40 text-zinc-400 hover:bg-zinc-900/60"
-              )}
-            >
-              <span className="text-[10px] font-black uppercase tracking-tighter opacity-60 mb-1">
-                {isSelected ? 'Included' : 'Hidden'}
-              </span>
-              <span className="text-sm font-bold tracking-tight">
-                {formatDateLabel(exp)}
-              </span>
-            </button>
-          );
-        })}
-       </div>
-    </div>
-  );
-
-  const NumericKeypad = () => {
-    const presets = type === 'delta' 
-      ? [0.10, 0.15, 0.20, 0.30, 0.40] 
-      : tickerPrice ? [
-          { label: '-0%', val: tickerPrice },
-          { label: '-5%', val: tickerPrice * 0.95 },
-          { label: '-10%', val: tickerPrice * 0.90 },
-          { label: '-15%', val: tickerPrice * 0.85 },
-          { label: '-20%', val: tickerPrice * 0.80 },
-          { label: '-25%', val: tickerPrice * 0.75 },
-        ] : [];
-
-    return (
-      <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between p-3 border-b border-zinc-900">
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Edit {type}</span>
-          <button onClick={onClose} className="p-2 bg-zinc-900 rounded-full text-zinc-400"><X size={24} /></button>
-        </div>
-
-        <div className="flex flex-wrap justify-center gap-1.5 p-3 bg-zinc-950/30">
-          {presets.map((p: any) => (
-             <button 
-               key={typeof p === 'number' ? p : p.label}
-               onClick={() => {
-                 const val = typeof p === 'number' ? p : p.val;
-                 setLocalValue(Math.abs(val).toFixed(2));
-                 setIsFirstKey(false);
-               }}
-               className="px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-full text-[10px] font-bold text-zinc-300 active:bg-emerald-500 active:text-black transition-colors"
-             >
-               {typeof p === 'number' ? p : `${p.label} ($${p.val.toFixed(2)})`}
-             </button>
-          ))}
-        </div>
-
-        <div className="px-6 py-2 flex flex-col items-center justify-center bg-zinc-950">
-           <div className={cn(
-             "text-3xl font-mono font-bold tracking-tighter transition-opacity",
-             isFirstKey ? "text-zinc-600 opacity-60" : "text-white"
-           )}>
-             {type === 'strike' && <span className={cn(isFirstKey ? "text-zinc-800" : "text-zinc-700", "mr-2")}>$</span>}
-             {type === 'delta' && <span className={cn(isFirstKey ? "text-zinc-800" : "text-zinc-700", "mr-0.5")}></span>}
-             {localValue.toString()}
-           </div>
-        </div>
-
-        <div className="flex-1 grid grid-cols-3 gap-0.5 p-0.5 bg-zinc-950/50">
-          {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'BACK'].map(k => (
-            <button 
-              key={k} 
-              onClick={() => handleKey(k)}
-              className="py-3.5 text-xl font-medium bg-zinc-900/40 hover:bg-zinc-800/60 active:bg-zinc-700/80 rounded flex items-center justify-center transition-colors"
-            >
-              {k === 'BACK' ? <Delete size={20} /> : k}
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <div className="fixed inset-0 z-[100] flex flex-col justify-end bg-black/60 backdrop-blur-sm">
-      <div className="bg-black border-t border-zinc-800 rounded-t-[2rem] overflow-hidden h-fit max-h-[85vh] min-h-[50vh] flex flex-col animate-in slide-in-from-bottom duration-300">
-        {type === 'months' ? (
-          <div className="flex flex-col flex-1">
-             <div className="flex items-center justify-between p-3 border-b border-zinc-900">
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Expiry Selection</span>
-                <button onClick={onClose} className="p-2 bg-zinc-900 rounded-full text-zinc-400"><X size={24} /></button>
-             </div>
-             <MonthsGrid />
-          </div>
-        ) : type === 'expirations' ? (
-          <div className="flex flex-col flex-1">
-             <div className="flex items-center justify-between p-3 border-b border-zinc-900">
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Filter Strike Dates</span>
-                <div className="flex items-center gap-2">
-                   <button 
-                     onClick={() => { 
-                       setLocalValue(allExps || []); 
-                       onChange(allExps || []); 
-                     }}
-                     className="px-3 py-1.5 bg-zinc-900 rounded-lg text-[10px] font-bold text-zinc-400 uppercase tracking-widest hover:text-white"
-                   >All</button>
-                   <button onClick={onClose} className="p-2 bg-zinc-900 rounded-full text-zinc-400"><X size={24} /></button>
-                </div>
-             </div>
-             <ExpirationsGrid />
-          </div>
-        ) : <NumericKeypad />}
-      </div>
-    </div>
-  );
-});
-
-// --- Main Page ---
 
 export default function OptionAnalyzer() {
   const [strategyId, setStrategyId] = useState<StrategyId>(DEFAULT_STRATEGY_ID);
@@ -551,12 +49,12 @@ export default function OptionAnalyzer() {
   const [needsFetch, setNeedsFetch] = useState(false);
   const [globalSortConfig, setGlobalSortConfig] = useState<SortConfig>({ key: null, direction: null });
 
-  // Custom Keyboard State
-  // Custom Keyboard Handlers
-  const handleCloseKeypad = React.useCallback(() => setActiveKeypad(null), []);
-  const handleStrikeMinChange = React.useCallback((v: number) => setStrikeFilter(prev => [v, prev[1]]), []);
-  const handleStrikeMaxChange = React.useCallback((v: number) => setStrikeFilter(prev => [prev[0], v]), []);
+  // Custom keypad state and handlers. The state has to come first: the handlers
+  // close over its setter.
   const [activeKeypad, setActiveKeypad] = useState<'minMonths' | 'maxMonths' | 'delta' | 'strikeMin' | 'strikeMax' | 'expirations' | null>(null);
+  const handleCloseKeypad = useCallback(() => setActiveKeypad(null), []);
+  const handleStrikeMinChange = useCallback((v: number) => setStrikeFilter(prev => [v, prev[1]]), []);
+  const handleStrikeMaxChange = useCallback((v: number) => setStrikeFilter(prev => [prev[0], v]), []);
 
   // Defer the filters and heavy data so the sliders stay snappy
   const deferredStrikeFilter = useDeferredValue(strikeFilter);
@@ -566,7 +64,6 @@ export default function OptionAnalyzer() {
   const deltaSign = strategy.deltaWindow(1)[0] < 0 ? '-' : '';
 
   const prevTickerRef = useRef('');
-  const prevMteRef = useRef({ min: 0, max: 6 });
   const capital = useMemo(() => capitalInput.replace(/[^0-9.]/g, ''), [capitalInput]);
 
   const handleCapitalChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -762,12 +259,7 @@ export default function OptionAnalyzer() {
                   <span className="truncate max-w-[200px]">
                     {selectedExps.length === 0 ? 'None selected' : 
                      selectedExps.length === Array.from(new Set((data?.options || []).map(o => o.expiration))).length ? 'All selected' :
-                     selectedExps.length === 1 ? (function(dateStr: string) {
-                        try {
-                          const d = new Date(dateStr + 'T12:00:00');
-                          return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                        } catch { return dateStr; }
-                     })(selectedExps[0]) :
+                     selectedExps.length === 1 ? formatExpirationLabel(selectedExps[0]) :
                      `${selectedExps.length} Dates`}
                   </span>
                   <div className="w-6 h-6 rounded bg-zinc-800 flex items-center justify-center text-[10px] font-black group-active:bg-emerald-500 group-active:text-black">
@@ -906,12 +398,7 @@ export default function OptionAnalyzer() {
                                 }}
                                 className="w-4 h-4 accent-emerald-500 bg-zinc-900 border-zinc-800 rounded-sm group-hover:border-zinc-700"
                               />
-                              {(function(dateStr: string) {
-                                try {
-                                  const d = new Date(dateStr + 'T12:00:00');
-                                  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                                } catch { return dateStr; }
-                              })(exp)}
+                              {formatExpirationLabel(exp)}
                             </label>
                           ))}
                       </div>
@@ -960,8 +447,8 @@ export default function OptionAnalyzer() {
 
                 {/* Charts */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-10 text-white font-sans">
-                  <AnalysisChart title="Yield / Strike Analysis" icon={BarChart3} data={filteredOptions} xAxisKey="strike" xAxisName="Strike" yAxisKey="annualizedReturn" yAxisName="Return" unit="%" color="#10b981" />
-                  <AnalysisChart title="Yield / DTE Profile" icon={Calendar} data={filteredOptions} xAxisKey="daysToExpiration" xAxisName="DTE" yAxisKey="annualizedReturn" yAxisName="Return" unit="%" color="#3b82f6" />
+                  <AnalysisChart title="Yield / Strike Analysis" icon={BarChart3} data={filteredOptions} xAxisKey="strike" xAxisName="Strike" yAxisKey="annualizedReturn" yAxisName="Return" unit="%" color="#10b981" seriesName={strategy.copy.seriesName} />
+                  <AnalysisChart title="Yield / DTE Profile" icon={Calendar} data={filteredOptions} xAxisKey="daysToExpiration" xAxisName="DTE" yAxisKey="annualizedReturn" yAxisName="Return" unit="%" color="#3b82f6" seriesName={strategy.copy.seriesName} />
                 </div>
 
                 {/* Full Results */}
