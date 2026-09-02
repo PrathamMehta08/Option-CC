@@ -2,25 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import YahooFinance from 'yahoo-finance2';
 import { addMonths, isWithinInterval } from 'date-fns';
 import { getStrategy } from '@/lib/strategies';
-import {
-  annualizeReturn,
-  contractReturnPct,
-  effectivePremium,
-  maxContractsFor,
-  premiumPerContract,
-} from '@/lib/returns';
-import type {
-  ScreenedOption,
-  ScreenerResponse,
-  YahooOptionChain,
-  YahooOptionQuote,
-} from '@/lib/optionChain';
+import { screenChain, type ExpirationInput } from '@/lib/screen';
+import type { ScreenerResponse, YahooOptionChain, YahooOptionQuote } from '@/lib/optionChain';
 
 const yahooFinance = new YahooFinance({
   suppressNotices: ['yahooSurvey'],
 });
 
-const RISK_FREE_RATE = 0.05;
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -35,7 +24,6 @@ export async function GET(req: NextRequest) {
   const deltaMagnitude = Math.abs(
     parseFloat(searchParams.get('delta') || String(strategy.defaults.deltaMagnitude))
   );
-  const [minDelta, maxDelta] = strategy.deltaWindow(deltaMagnitude);
 
   try {
     // 1. Get current price
@@ -85,67 +73,28 @@ export async function GET(req: NextRequest) {
       })
     );
 
-    const rows: ScreenedOption[] = [];
-
-    chainsResults.forEach((res) => {
-      if (!res || !res.chain || !res.chain.options || res.chain.options.length === 0) return;
+    // 4. Screen. All strategy-specific behaviour lives behind the strategy.
+    const expirations: ExpirationInput[] = [];
+    for (const res of chainsResults) {
+      if (!res?.chain?.options?.length) continue;
 
       const { expDate, chain } = res;
       const board = chain.options[0] as unknown as YahooOptionChain;
       const contracts: YahooOptionQuote[] = board[strategy.chainSide] ?? [];
 
-      const expirationDateStr = expDate.toISOString().split('T')[0];
-      const daysToExpiration = Math.max(
-        1,
-        Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-      );
-      const t = daysToExpiration / 365.0;
-
-      contracts.forEach((contract) => {
-        if (!strategy.isEligible(contract, currentPrice)) return;
-
-        const sigma = contract.impliedVolatility || 0;
-        const delta = strategy.delta(currentPrice, contract.strike, t, sigma, RISK_FREE_RATE);
-        if (delta < minDelta || delta > maxDelta) return;
-
-        const capitalRequired = strategy.capitalRequiredPerContract(contract, currentPrice);
-        const premiumPerShare = effectivePremium(contract);
-
-        // Per-contract economics. These are properties of the contract and must
-        // not depend on how many the user can afford — that dependency is what
-        // made every row read 0.00% whenever capital covered zero contracts.
-        const premium = premiumPerContract(premiumPerShare);
-        const returnPct = contractReturnPct(premium, capitalRequired);
-        const annualizedReturnPct = annualizeReturn(returnPct, daysToExpiration);
-
-        // Affordability is reported alongside, never folded into the returns.
-        const maxContracts = maxContractsFor(capital, capitalRequired);
-        const totalCapitalRequired = maxContracts * capitalRequired;
-        const totalPremiumReceived = maxContracts * premium;
-
-        rows.push({
-          expiration: expirationDateStr,
-          daysToExpiration,
-          strike: contract.strike,
-          lastPrice: premiumPerShare,
-          high: contract.ask ?? premiumPerShare,
-          delta,
-          iv: sigma * 100,
-          moneyness: ((contract.strike - currentPrice) / currentPrice) * 100,
-          openInterest: contract.openInterest || 0,
-          volume: contract.volume || 0,
-          capitalRequiredPerContract: capitalRequired,
-          premiumPerContract: premium,
-          returnPct,
-          annualizedReturn: annualizedReturnPct,
-          maxContracts,
-          totalCapitalRequired,
-          totalPremiumReceived,
-        });
+      expirations.push({
+        expiration: expDate.toISOString().split('T')[0],
+        daysToExpiration: Math.max(1, Math.ceil((expDate.getTime() - today.getTime()) / MS_PER_DAY)),
+        contracts,
       });
-    });
+    }
 
-    rows.sort((a, b) => b.annualizedReturn - a.annualizedReturn);
+    const rows = screenChain(expirations, {
+      strategy,
+      currentPrice,
+      capital,
+      deltaMagnitude,
+    });
 
     const body: ScreenerResponse = {
       ticker,
