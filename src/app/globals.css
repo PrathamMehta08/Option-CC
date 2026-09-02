@@ -1,9 +1,16 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
-@theme {
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
-  --font-mono: var(--font-geist-mono);
+/* Fonts are loaded by next/font in layout.tsx, which self-hosts them and
+   preloads the files. The Google Fonts @import that used to live here blocked
+   first paint and pulled a second family the app never used.
+
+   `@theme inline` matters: without it Tailwind resolves these var() references
+   once at :root, where the next/font variables are not in scope, and silently
+   falls back to its default stack. `inline` emits the reference into each
+   utility instead, so it resolves against <html> where the variables live. */
+@theme inline {
+  --font-sans: var(--font-sans-custom), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-mono: var(--font-mono-custom), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 :root {
@@ -20,6 +27,15 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Every figure in the table is compared against the one above it, so digits
+   must occupy the same width regardless of value. */
+.font-mono,
+table,
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }
 
 /* Custom scrollbar - Professional & Minimalist */
