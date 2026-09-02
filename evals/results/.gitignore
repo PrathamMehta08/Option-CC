@@ -1,0 +1,4 @@
+# Keep the directory and the committed baseline; ignore local ad-hoc runs.
+*
+!.gitignore
+!*baseline*.json
