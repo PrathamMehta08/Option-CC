@@ -223,15 +223,6 @@ evals/
   grade.ts                the grader
 ```
 
-## A caveat on the data
-
-Yahoo's implied volatility is missing or implausible for a large share of contracts —
-on a recent NVDA chain the median reported IV was 0%. Delta is derived from IV, so
-those rows get a degenerate delta (the guard value, `1` for calls and `0` for puts)
-and the delta filter treats them accordingly. Sanity-check delta and IV against your
-broker before relying on them. Strike, premium, expiry, open interest, volume and
-every figure derived from the premium are unaffected.
-
 ## Stack
 
 Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Vercel AI SDK v4
