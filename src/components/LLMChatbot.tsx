@@ -116,7 +116,8 @@ export default function LLMChatbot({
       {/* Floating Action Button */}
       <button
         onClick={() => setIsOpen(true)}
-        className={`fixed bottom-6 right-6 hidden lg:flex items-center justify-center w-14 h-14 bg-emerald-500 text-black rounded-full shadow-lg hover:bg-emerald-400 z-50`}
+        aria-label="Open the AI assistant"
+        className={`fixed bottom-5 right-5 md:bottom-6 md:right-6 flex items-center justify-center w-14 h-14 bg-emerald-500 text-black rounded-full shadow-lg shadow-emerald-500/20 hover:bg-emerald-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black z-50`}
         style={{
           transition: 'transform 0.2s ease, opacity 0.2s ease',
           transform: isOpen ? 'scale(0)' : 'scale(1)',
@@ -129,7 +130,10 @@ export default function LLMChatbot({
 
       {/* Chat Window */}
       <div
-        className={`fixed bottom-6 right-6 w-[400px] h-[600px] bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl flex-col overflow-hidden z-50`}
+        role="dialog"
+        aria-label="AI assistant"
+        aria-hidden={!isOpen}
+        className={`fixed inset-x-3 bottom-3 top-16 sm:inset-x-auto sm:top-auto sm:bottom-6 sm:right-6 sm:w-[400px] sm:h-[600px] bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl flex-col overflow-hidden z-50`}
         style={{
           display: 'flex',
           transition: 'opacity 0.3s ease, transform 0.3s ease',
@@ -151,7 +155,8 @@ export default function LLMChatbot({
           </div>
           <button
             onClick={() => setIsOpen(false)}
-            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full transition-colors"
+            aria-label="Close the assistant"
+            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
           >
             <X size={20} />
           </button>
@@ -239,7 +244,8 @@ export default function LLMChatbot({
             <button
               type="submit"
               disabled={!input.trim() || isLoading}
-              className="absolute right-2 p-2 bg-emerald-500 text-black rounded-full hover:bg-emerald-400 disabled:opacity-50 transition-colors"
+              aria-label="Send message"
+              className="absolute right-2 p-2 bg-emerald-500 text-black rounded-full hover:bg-emerald-400 disabled:opacity-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
             >
               <Send size={16} />
             </button>

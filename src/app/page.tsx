@@ -162,8 +162,45 @@ export default function OptionAnalyzer() {
     });
   }, [data, deferredStrikeFilter, deferredSelectedExps, customFilters]);
 
+  /** Headline figures for the strip above the results. */
+  const summaryStats = useMemo(() => {
+    if (filteredOptions.length === 0) return [];
+
+    const median = (values: number[]) => {
+      const sorted = [...values].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    };
+
+    const bestReturn = Math.max(...filteredOptions.map((o) => o.annualizedReturn));
+    const affordable = filteredOptions.filter((o) => o.maxContracts > 0).length;
+
+    return [
+      {
+        label: 'Contracts shown',
+        value: filteredOptions.length.toLocaleString(),
+        tone: 'text-zinc-100',
+      },
+      {
+        label: 'Best ann. return',
+        value: `${bestReturn.toFixed(1)}%`,
+        tone: 'text-emerald-400',
+      },
+      {
+        label: 'Median IV',
+        value: `${median(filteredOptions.map((o) => o.iv)).toFixed(1)}%`,
+        tone: 'text-zinc-100',
+      },
+      {
+        label: 'You can afford',
+        value: affordable > 0 ? `${affordable.toLocaleString()} of ${filteredOptions.length.toLocaleString()}` : 'none',
+        tone: affordable > 0 ? 'text-zinc-100' : 'text-amber-500',
+      },
+    ];
+  }, [filteredOptions]);
+
   return (
-    <div className="min-h-screen font-sans antialiased text-white selection:bg-emerald-500/30 pb-16">
+    <div className="min-h-screen font-sans antialiased text-white selection:bg-emerald-500/30 pb-28 md:pb-16">
       {/* Sticky Header / Mobile Controls Container */}
       <div className="sticky top-0 z-50 bg-black/90 backdrop-blur-xl border-b border-zinc-900 px-4 md:px-12 py-3 md:py-4">
         <div className="max-w-[1500px] mx-auto flex items-center justify-between">
@@ -171,7 +208,10 @@ export default function OptionAnalyzer() {
             <div className="hidden md:flex items-center justify-center w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-500">
                <TrendingUp size={20} />
             </div>
-            <h1 className="text-xl md:text-2xl font-bold tracking-tighter">{strategy.copy.heading}</h1>
+            <h1 className="text-lg md:text-2xl font-bold tracking-tighter whitespace-nowrap">
+              <span className="sm:hidden">{strategy.copy.name}</span>
+              <span className="hidden sm:inline">{strategy.copy.heading}</span>
+            </h1>
 
             {/* Strategy switcher: one deployment serves every strategy. */}
             <div className="hidden sm:flex items-center gap-1 bg-zinc-900/50 border border-zinc-800 rounded-xl p-1">
@@ -179,8 +219,9 @@ export default function OptionAnalyzer() {
                 <button
                   key={id}
                   onClick={() => handleStrategyChange(id)}
+                  aria-pressed={id === strategyId}
                   className={cn(
-                    "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors",
+                    "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
                     id === strategyId
                       ? "bg-emerald-500 text-black"
                       : "text-zinc-400 hover:text-white"
@@ -194,10 +235,14 @@ export default function OptionAnalyzer() {
 
           <div className="flex items-center gap-4 md:gap-8">
              {data && (
-               <div className="flex items-center gap-4 md:gap-6 bg-zinc-900/50 px-3 md:px-4 py-2 rounded-xl border border-zinc-800">
-                 <div className="flex flex-col md:flex-row md:items-center gap-0.5 md:gap-3 leading-none text-white">
+               <div className="relative flex items-center gap-4 md:gap-6 bg-gradient-to-b from-zinc-900/70 to-zinc-950/70 px-3 md:px-4 py-2 rounded-xl border border-zinc-800 shadow-lg shadow-black/40">
+                 <span
+                   aria-hidden
+                   className="absolute left-0 top-1/2 h-6 w-px -translate-y-1/2 bg-gradient-to-b from-transparent via-emerald-500/60 to-transparent"
+                 />
+                 <div className="flex flex-col md:flex-row md:items-baseline gap-0.5 md:gap-3 leading-none text-white">
                    <p className="text-[10px] md:text-xs text-zinc-500 uppercase font-bold tracking-[0.2em]">{data.ticker}</p>
-                   <p className="text-lg md:text-2xl font-black text-emerald-500 tabular-nums">
+                   <p className="text-lg md:text-2xl font-black text-emerald-400 tabular-nums tracking-tight">
                      ${data.currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                    </p>
                  </div>
@@ -205,7 +250,7 @@ export default function OptionAnalyzer() {
              )}
              <button 
                 onClick={() => setShowMobileFilters(!showMobileFilters)}
-                className="lg:hidden p-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white transition-colors"
+                className="lg:hidden p-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 aria-label="Toggle parameters"
               >
                 <Settings2 size={24} />
@@ -219,25 +264,46 @@ export default function OptionAnalyzer() {
           showMobileFilters ? "max-h-[85vh] opacity-100 py-6" : "max-h-0 opacity-0 py-0"
         )}>
             <div className="space-y-8 px-1">
+              {/* The desktop switcher is hidden below sm, so mobile needs its own
+                  way to change strategy. */}
+              <div className="space-y-2 sm:hidden">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Strategy</label>
+                <div className="grid grid-cols-2 gap-1 bg-zinc-900/50 border border-zinc-800 rounded-xl p-1">
+                  {STRATEGY_IDS.map((id) => (
+                    <button
+                      key={id}
+                      onClick={() => handleStrategyChange(id)}
+                      aria-pressed={id === strategyId}
+                      className={cn(
+                        "px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors",
+                        id === strategyId ? "bg-emerald-500 text-black" : "text-zinc-400"
+                      )}
+                    >
+                      {STRATEGIES[id].copy.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Ticker</label>
-                  <input type="text" value={ticker} onChange={(e) => setTicker(e.target.value.toUpperCase())} className="w-full bg-zinc-900 border border-zinc-800 rounded-md py-2 px-3 text-sm focus:border-zinc-500 outline-none text-white" />
+                  <input type="text" value={ticker} onChange={(e) => setTicker(e.target.value.toUpperCase())} className="w-full bg-zinc-900 border border-zinc-800 rounded-lg py-3 px-3 text-base sm:text-sm focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-colors text-white" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Capital ($)</label>
-                  <input type="text" value={capitalInput} onChange={handleCapitalChange} className="w-full bg-zinc-900 border border-zinc-800 rounded-md py-2 px-3 text-sm font-mono focus:border-zinc-500 outline-none text-white" />
+                  <input type="text" value={capitalInput} onChange={handleCapitalChange} className="w-full bg-zinc-900 border border-zinc-800 rounded-lg py-3 px-3 text-base sm:text-sm font-mono focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-colors text-white" />
                 </div>
               </div>
 
               <div className="space-y-3">
                 <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Months to Expiry</label>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => setActiveKeypad('minMonths')} className="flex-1 bg-zinc-900 border border-zinc-800 rounded-md py-2 px-3 text-sm text-left text-white group">
+                  <button onClick={() => setActiveKeypad('minMonths')} className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg py-3 px-3 text-sm text-left text-white group focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
                     <span>{minMonths}</span>
                   </button>
                   <span className="text-zinc-700 font-bold">→</span>
-                  <button onClick={() => setActiveKeypad('maxMonths')} className="flex-1 bg-zinc-900 border border-zinc-800 rounded-md py-2 px-3 text-sm text-left text-white">
+                  <button onClick={() => setActiveKeypad('maxMonths')} className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg py-3 px-3 text-sm text-left text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
                     <span>{maxMonths}</span>
                   </button>
                 </div>
@@ -245,7 +311,7 @@ export default function OptionAnalyzer() {
 
               <div className="space-y-3">
                 <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{strategy.copy.deltaLabel}</label>
-                <button onClick={() => setActiveKeypad('delta')} className="w-full bg-zinc-900 border border-zinc-800 rounded-md py-2 px-3 text-sm text-left text-white group hover:border-zinc-700 transition-colors">
+                <button onClick={() => setActiveKeypad('delta')} className="w-full bg-zinc-900 border border-zinc-800 rounded-lg py-3 px-3 text-sm text-left text-white group hover:border-zinc-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
                   <span className="font-mono">{deltaSign}{deltaMagnitude}</span>
                 </button>
               </div>
@@ -254,7 +320,7 @@ export default function OptionAnalyzer() {
                 <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Expirations</label>
                 <button 
                   onClick={() => setActiveKeypad('expirations')} 
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-md py-2 px-3 text-sm text-left text-white flex items-center justify-between group"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg py-3 px-3 text-sm text-left text-white flex items-center justify-between group focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 >
                   <span className="truncate max-w-[200px]">
                     {selectedExps.length === 0 ? 'None selected' : 
@@ -272,11 +338,11 @@ export default function OptionAnalyzer() {
                 <div className="space-y-3 pt-6 border-t border-zinc-900">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Strike Price Range</label>
                   <div className="flex items-center gap-2">
-                    <button onClick={() => setActiveKeypad('strikeMin')} className="flex-1 bg-zinc-900 border border-zinc-800 rounded-md py-2 px-3 text-sm text-left text-white">
+                    <button onClick={() => setActiveKeypad('strikeMin')} className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg py-3 px-3 text-sm text-left text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
                       <span className="font-mono">${strikeFilter[0]}</span>
                     </button>
                     <span className="text-zinc-700 font-bold">→</span>
-                    <button onClick={() => setActiveKeypad('strikeMax')} className="flex-1 bg-zinc-900 border border-zinc-800 rounded-md py-2 px-3 text-sm text-left text-white">
+                    <button onClick={() => setActiveKeypad('strikeMax')} className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg py-3 px-3 text-sm text-left text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
                       <span className="font-mono">${strikeFilter[1]}</span>
                     </button>
                   </div>
@@ -294,13 +360,13 @@ export default function OptionAnalyzer() {
         </div>
       </div>
 
-      <main className="max-w-[1500px] mx-auto p-4 md:p-12">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 md:gap-20 items-start">
+      <main className="max-w-[1500px] mx-auto px-4 py-6 md:px-12 md:py-10">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 md:gap-14 items-start">
           {/* Static/Sticky Sidebar on Desktop */}
           <aside className="hidden lg:block lg:col-span-3 lg:sticky lg:top-[120px] max-h-[calc(100vh-160px)] overflow-y-auto pr-8 scrollbar-thin pb-20">
-            <div className="space-y-10">
-              <section className="space-y-6">
-                <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 border-b border-zinc-900 pb-2">Analysis Parameters</h2>
+            <div className="space-y-5">
+              <section className="space-y-6 rounded-2xl border border-zinc-900 bg-gradient-to-b from-zinc-950 to-black p-5">
+                <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 border-b border-zinc-900 pb-2.5">Analysis Parameters</h2>
                 
                 {customFilters.length > 0 && (
                   <div className="flex flex-wrap gap-2">
@@ -322,7 +388,7 @@ export default function OptionAnalyzer() {
                       type="text" 
                       value={ticker}
                       onChange={(e) => setTicker(e.target.value.toUpperCase())}
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg py-2.5 px-3 text-sm focus:outline-none focus:border-zinc-500 transition-colors text-white"
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg py-2.5 px-3 text-sm focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-colors text-white"
                     />
                   </div>
 
@@ -332,7 +398,7 @@ export default function OptionAnalyzer() {
                       type="text" 
                       value={capitalInput}
                       onChange={handleCapitalChange}
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg py-2.5 px-3 text-sm focus:outline-none focus:border-zinc-500 transition-colors font-mono text-white"
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg py-2.5 px-3 text-sm focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-colors font-mono text-white"
                     />
                   </div>
 
@@ -362,7 +428,7 @@ export default function OptionAnalyzer() {
                   <button 
                     onClick={fetchOptions}
                     disabled={loading}
-                    className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 disabled:bg-zinc-900 disabled:text-zinc-600 text-black text-xs font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 active:scale-[0.97]"
+                    className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 disabled:bg-zinc-900 disabled:text-zinc-600 text-black text-xs font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 active:scale-[0.97] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                   >
                     {loading ? <Loader2 className="animate-spin" size={18} /> : <span>Update Analysis</span>}
                   </button>
@@ -370,8 +436,8 @@ export default function OptionAnalyzer() {
               </section>
 
               {data && (
-                <section className="space-y-6 pt-6 border-t border-zinc-900 text-white font-sans">
-                  <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 border-b border-zinc-900 pb-2">Refine Results</h2>
+                <section className="space-y-6 rounded-2xl border border-zinc-900 bg-gradient-to-b from-zinc-950 to-black p-5 text-white font-sans">
+                  <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 border-b border-zinc-900 pb-2.5">Refine Results</h2>
                   
                   <div className="space-y-8 font-sans">
                     <DualRangeSlider 
@@ -410,7 +476,7 @@ export default function OptionAnalyzer() {
           </aside>
 
           {/* Scrolling Content Area */}
-          <section className="lg:col-span-9 space-y-12 md:space-y-20">
+          <section className="lg:col-span-9 space-y-8 md:space-y-10">
             {error && (
               <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-500 text-xs font-bold uppercase tracking-widest text-center justify-center">
                  <Info size={14} />
@@ -441,18 +507,86 @@ export default function OptionAnalyzer() {
             )}
 
             {data && filteredOptions.length > 0 ? (
-              <div className="space-y-16 md:space-y-24">
+              <div className="space-y-10 md:space-y-14">
+                {/* At-a-glance shape of what is on screen, so the numbers in the
+                    table have something to be read against. */}
+                <dl className="grid grid-cols-2 md:grid-cols-4 gap-px bg-zinc-900 border border-zinc-900 rounded-xl overflow-hidden">
+                  {summaryStats.map((stat) => (
+                    <div
+                      key={stat.label}
+                      className="group relative bg-gradient-to-b from-zinc-950 to-black px-4 py-5 space-y-1.5 transition-colors hover:from-zinc-900/60"
+                    >
+                      <dt className="text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-600">
+                        {stat.label}
+                      </dt>
+                      <dd
+                        className={cn(
+                          'font-mono font-bold tabular-nums text-xl md:text-2xl tracking-tight',
+                          stat.tone
+                        )}
+                      >
+                        {stat.value}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+
                 {/* Top Picks */}
                 <ResultsTable title={strategy.copy.tableTitle} options={filteredOptions.slice(0, 10)} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} capitalColumnLabel={strategy.copy.capitalColumnLabel} />
 
                 {/* Charts */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-10 text-white font-sans">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6 text-white font-sans">
                   <AnalysisChart title="Yield / Strike Analysis" icon={BarChart3} data={filteredOptions} xAxisKey="strike" xAxisName="Strike" yAxisKey="annualizedReturn" yAxisName="Return" unit="%" color="#10b981" seriesName={strategy.copy.seriesName} />
                   <AnalysisChart title="Yield / DTE Profile" icon={Calendar} data={filteredOptions} xAxisKey="daysToExpiration" xAxisName="DTE" yAxisKey="annualizedReturn" yAxisName="Return" unit="%" color="#3b82f6" seriesName={strategy.copy.seriesName} />
                 </div>
 
                 {/* Full Results */}
                 <ResultsTable title="Full Market Scan Results" options={filteredOptions} count={filteredOptions.length} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} capitalColumnLabel={strategy.copy.capitalColumnLabel} />
+              </div>
+            ) : loading ? (
+              // A skeleton in the shape of the real results reads as progress,
+              // where a centred spinner reads as a stall.
+              <div className="space-y-10 animate-in fade-in duration-300">
+                <dl className="grid grid-cols-2 md:grid-cols-4 gap-px bg-zinc-900 border border-zinc-900 rounded-xl overflow-hidden">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="bg-black px-4 py-5 space-y-2.5">
+                      <div className="h-2 w-20 rounded bg-zinc-900 animate-pulse" />
+                      <div
+                        className="h-6 w-24 rounded bg-zinc-900 animate-pulse"
+                        style={{ animationDelay: `${i * 90}ms` }}
+                      />
+                    </div>
+                  ))}
+                </dl>
+
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 px-1">
+                    <Loader2 className="animate-spin text-emerald-500" size={12} />
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">
+                      Scanning {ticker || 'the chain'} — pulling every expiration
+                    </span>
+                  </div>
+                  <div className="rounded-xl border border-zinc-900 bg-black/50 divide-y divide-zinc-900 overflow-hidden">
+                    {Array.from({ length: 8 }).map((_, row) => (
+                      <div key={row} className="flex items-center gap-4 px-4 py-4">
+                        {Array.from({ length: 7 }).map((__, col) => (
+                          <div
+                            key={col}
+                            className="h-2.5 rounded bg-zinc-900 animate-pulse"
+                            style={{
+                              width: `${[68, 34, 52, 46, 40, 40, 58][col]}px`,
+                              animationDelay: `${(row * 7 + col) * 22}ms`,
+                            }}
+                          />
+                        ))}
+                        <div
+                          className="ml-auto h-2.5 w-14 rounded bg-emerald-500/20 animate-pulse"
+                          style={{ animationDelay: `${row * 60}ms` }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="h-[40vh] md:h-[50vh] flex flex-col items-center justify-center space-y-6 md:space-y-10 rounded-[2rem] border border-zinc-900 bg-zinc-950/20 px-8 text-center bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-zinc-900/40 via-transparent to-transparent">
@@ -466,18 +600,6 @@ export default function OptionAnalyzer() {
                       <p className="text-zinc-500 text-xs md:text-sm max-w-xs mx-auto leading-relaxed">Enter a symbol like <span className="text-emerald-500 font-mono font-bold">NVDA</span> or <span className="text-emerald-500 font-mono font-bold">TSLA</span> to find premium {strategy.copy.emptyHint}</p>
                     </div>
                   </>
-                )}
-                {loading && (
-                  <div className="flex flex-col items-center gap-8">
-                    <div className="relative">
-                      <div className="absolute inset-0 bg-emerald-500/30 blur-[40px] rounded-full animate-pulse" />
-                      <Loader2 className="animate-spin text-emerald-500" size={56} strokeWidth={1} />
-                    </div>
-                    <div className="space-y-2">
-                       <p className="text-zinc-500 text-[10px] uppercase tracking-[0.4em] font-black animate-pulse">Deep Scanning Chains</p>
-                       <p className="text-zinc-700 text-[9px] uppercase tracking-widest">Real-time Data Stream Active</p>
-                    </div>
-                  </div>
                 )}
               </div>
             )}

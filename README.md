@@ -11,6 +11,10 @@ against the capital it ties up.
 
 ![The screener showing covered call opportunities for NVDA](docs/screenshot.png)
 
+<p align="center">
+  <img src="docs/screenshot-mobile.png" alt="The same screen on a phone, as a card list" width="320">
+</p>
+
 > **This is not financial advice.** It is a calculator over public market data. The
 > figures are estimates from delayed quotes and an approximation of delta; they are
 > not a recommendation to trade anything. Options can lose money, including more than
@@ -84,6 +88,36 @@ report:
 ```bash
 npm run test:coverage
 ```
+
+### Evaluating the assistant
+
+The assistant is measured, not guessed at. `evals/` holds 66 natural-language
+cases across eight categories, and the harness reports how often the model emits
+the right tool call:
+
+```bash
+npm run eval
+```
+
+```bash
+npm run eval -- --filter filter
+```
+
+```bash
+npm run eval -- --case sort-cheapest-first
+```
+
+The harness imports the same tools and system prompt the API route uses
+(`src/lib/assistant/`), so it cannot drift from what ships. Cases are data in
+`evals/cases.json` — adding one does not mean touching the runner. Every emitted
+call is validated against the real Zod schema, and the report separates
+`correct`, `wrong` and `rejected-by-schema`, because for an adversarial case a
+schema rejection is a pass and everywhere else it is a failure. Full runs are
+written to `evals/results/<timestamp>.json` so two runs can be compared.
+
+It needs `GROQ_API_KEY`, calls no market-data API, and is paced to Groq's free
+tier of 8,000 tokens per minute — every call carries the whole tool schema, so
+that budget, not latency, sets the pace. Raise it with `--tpm` on a paid tier.
 
 ### Build
 
@@ -182,6 +216,11 @@ src/
     filters.ts            structured filter schema + evaluator
     optionChain.ts        option chain and screened-row types
     strategies/           one file per strategy + registry
+    assistant/            tools + system prompt, shared with the eval harness
+evals/
+  cases.json              the eval cases, as data
+  run.ts                  the runner (npm run eval)
+  grade.ts                the grader
 ```
 
 ## A caveat on the data
