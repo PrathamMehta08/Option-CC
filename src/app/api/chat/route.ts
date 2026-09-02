@@ -4,17 +4,55 @@ import { z } from 'zod';
 
 export const maxDuration = 30;
 
+// Groq exposes an OpenAI-compatible endpoint, so the OpenAI provider works as-is.
+// Model note: the previous `llama-3.1-8b-instant` was decommissioned by Groq and
+// every request failed with `model_not_found`, which presented as "function
+// calling stopped working". `openai/gpt-oss-120b` is current and supports tools.
+const GROQ_MODEL = 'openai/gpt-oss-120b';
+
 const groq = createOpenAI({
   baseURL: 'https://api.groq.com/openai/v1',
   apiKey: process.env.GROQ_API_KEY,
 });
 
+// Free-form strings let the model answer "descending" where the UI expects
+// "desc", silently producing a no-op sort. Enums make the provider conform.
+const SORT_KEY = z.enum([
+  'strike',
+  'lastPrice',
+  'delta',
+  'iv',
+  'moneyness',
+  'openInterest',
+  'volume',
+  'maxContracts',
+  'totalCapitalRequired',
+  'totalPremiumReceived',
+  'annualizedReturn',
+  'daysToExpiration',
+  'expiration',
+]);
+
+const SORT_DIRECTION = z.enum(['asc', 'desc']);
+
 export async function POST(req: Request) {
+  // The screener is the product; the assistant is an enhancement. Without a key
+  // we say so plainly instead of failing with an opaque provider error.
+  if (!process.env.GROQ_API_KEY) {
+    return new Response(
+      JSON.stringify({
+        error:
+          'The AI assistant is unavailable because GROQ_API_KEY is not set. The screener and all filters work without it.',
+      }),
+      { status: 503, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
   try {
     const { messages } = await req.json();
 
     const result = streamText({
-      model: groq('llama-3.1-8b-instant'),
+      model: groq(GROQ_MODEL),
       system: `You are a helpful AI assistant for an options trading platform.
 You help the user filter and sort the option chain data by invoking tools.
 DO NOT make up data.
@@ -31,8 +69,8 @@ Use addCustomFilter for complex logic (e.g. opt.iv > 50). Do not use addCustomFi
         setSort: tool({
           description: 'Sort the option data table by a specific column.',
           parameters: z.object({
-            key: z.string().describe('The exact column name to sort by (e.g. "iv", "strike", "expiration", "annualizedReturn", "daysToExpiration", "lastPrice", "delta", "openInterest", "volume")'),
-            direction: z.string().describe('Sort direction: "asc" or "desc"'),
+            key: SORT_KEY.describe('The column to sort by'),
+            direction: SORT_DIRECTION.describe('Sort direction'),
           }),
         }),
         setTicker: tool({
@@ -62,11 +100,16 @@ Use addCustomFilter for complex logic (e.g. opt.iv > 50). Do not use addCustomFi
           }),
         }),
         addCustomFilter: tool({
-          description: 'Apply a custom javascript filter expression to the option data. Use this for complex filters (e.g. IV > 50). The expression must be a valid JS boolean expression using the "opt" variable.',
+          description:
+            'Apply a custom javascript filter expression to the option data. Use this for complex filters (e.g. IV > 50). The expression must be a valid JS boolean expression using the "opt" variable.',
           parameters: z.object({
             id: z.string().describe('A unique identifier'),
             name: z.string().describe('A short, human-readable name for the tag'),
-            code: z.string().describe('The JS expression using "opt" variable. Properties: strike, lastPrice, delta, iv, moneyness, openInterest, volume, maxContracts, totalCapitalRequired, totalPremiumReceived, annualizedReturn.'),
+            code: z
+              .string()
+              .describe(
+                'The JS expression using "opt" variable. Properties: strike, lastPrice, delta, iv, moneyness, openInterest, volume, maxContracts, totalCapitalRequired, totalPremiumReceived, annualizedReturn.'
+              ),
           }),
         }),
       },
