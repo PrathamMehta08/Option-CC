@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useDeferredValue, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useDeferredValue, useRef, useCallback } from 'react';
 import {
   Calendar,
   TrendingUp,
@@ -27,6 +27,16 @@ type OptionData = ScreenedOption;
 
 type ApiResponse = ScreenerResponse & { error?: string };
 
+/** Everything the screener API needs for one scan. */
+interface ScanParams {
+  strategyId: StrategyId;
+  ticker: string;
+  capital: string;
+  minMonths: number;
+  maxMonths: number;
+  deltaMagnitude: number;
+}
+
 
 export default function OptionAnalyzer() {
   const [strategyId, setStrategyId] = useState<StrategyId>(DEFAULT_STRATEGY_ID);
@@ -46,7 +56,6 @@ export default function OptionAnalyzer() {
   const [selectedExps, setSelectedExps] = useState<string[]>([]);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [customFilters, setCustomFilters] = useState<CustomFilter[]>([]);
-  const [needsFetch, setNeedsFetch] = useState(false);
   const [globalSortConfig, setGlobalSortConfig] = useState<SortConfig>({ key: null, direction: null });
 
   // Custom keypad state and handlers. The state has to come first: the handlers
@@ -71,38 +80,51 @@ export default function OptionAnalyzer() {
     setCapitalInput(formatNumberWithCommas(rawValue));
   }, []);
 
-  const fetchOptions = useCallback(async () => {
-    if (!ticker) return;
-    const currentTicker = ticker;
-    const tickerChanged = prevTickerRef.current !== currentTicker;
-    prevTickerRef.current = currentTicker;
+  /**
+   * A scan takes its parameters explicitly rather than closing over state.
+   * That keeps it callable straight from an event handler with values React has
+   * not committed yet — the strategy switcher needs exactly that — and means no
+   * effect has to exist just to observe a "please refetch" flag.
+   */
+  const runScan = useCallback(async (params: ScanParams) => {
+    if (!params.ticker) return;
+    const tickerChanged = prevTickerRef.current !== params.ticker;
+    prevTickerRef.current = params.ticker;
 
     setLoading(true);
     setError(null);
     setShowMobileFilters(false);
     try {
-      const params = new URLSearchParams({
-        strategy: strategyId,
-        ticker: currentTicker,
-        capital,
-        minMonths: minMonths.toString(),
-        maxMonths: maxMonths.toString(),
-        delta: deltaMagnitude.toString(),
+      const query = new URLSearchParams({
+        strategy: params.strategyId,
+        ticker: params.ticker,
+        capital: params.capital,
+        minMonths: params.minMonths.toString(),
+        maxMonths: params.maxMonths.toString(),
+        delta: params.deltaMagnitude.toString(),
       });
-      const res = await fetch(`/api/options?${params}`);
-      const json = await res.json();
+      const res = await fetch(`/api/options?${query}`);
+      const json: ApiResponse = await res.json();
       if (json.error) {
         setError(json.error);
-      } else {
-        setData(json);
-        if (json.options.length > 0) {
-          if (tickerChanged) {
-            const strikes = json.options.map((o: OptionData) => o.strike);
-            setStrikeFilter([Math.min(...strikes), Math.max(...strikes)]);
-            const exps = Array.from(new Set(json.options.map((o: OptionData) => o.expiration)))
-              .sort((a, b) => new Date(a as string).getTime() - new Date(b as string).getTime()) as string[];
-            setSelectedExps(exps);
-          }
+        return;
+      }
+
+      setData(json);
+      if (json.options.length > 0) {
+        // Expirations always follow the new results. Carrying the old selection
+        // across a scan can leave every row filtered out by dates that are no
+        // longer on the board.
+        setSelectedExps(
+          Array.from(new Set(json.options.map((o) => o.expiration))).sort(
+            (a, b) => new Date(a).getTime() - new Date(b).getTime()
+          )
+        );
+        // The strike range is a user setting, so only reset it when the
+        // underlying changed and the old bounds are meaningless.
+        if (tickerChanged) {
+          const strikes = json.options.map((o) => o.strike);
+          setStrikeFilter([Math.min(...strikes), Math.max(...strikes)]);
         }
       }
     } catch {
@@ -110,15 +132,28 @@ export default function OptionAnalyzer() {
     } finally {
       setLoading(false);
     }
-  }, [strategyId, ticker, capital, minMonths, maxMonths, deltaMagnitude]);
-
-  useEffect(() => {
-    fetchOptions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The parameters a scan would use right now, straight from render scope — no
+  // ref, so nothing can go stale and nothing is written during render.
+  const scanParams: ScanParams = {
+    strategyId,
+    ticker,
+    capital,
+    minMonths,
+    maxMonths,
+    deltaMagnitude,
+  };
+
+  // Deliberately not memoised: it closes over this render's parameters, and its
+  // only consumers are a click handler and the assistant, neither of which keys
+  // off its identity.
+  const requestScan = () => {
+    void runScan(scanParams);
+  };
+
   // Switching strategy resets the knobs to that strategy's defaults and rescans.
-  const handleStrategyChange = useCallback((next: StrategyId) => {
+  const handleStrategyChange = (next: StrategyId) => {
     if (next === strategyId) return;
     const defaults = STRATEGIES[next].defaults;
     setStrategyId(next);
@@ -128,23 +163,16 @@ export default function OptionAnalyzer() {
     setStrikeFilter(defaults.strikeRange);
     setCustomFilters([]);
     prevTickerRef.current = '';
-    setNeedsFetch(true);
-  }, [strategyId]);
-
-  useEffect(() => {
-    if (needsFetch) {
-      fetchOptions();
-      setNeedsFetch(false);
-    }
-  }, [needsFetch, fetchOptions]);
-
-  // Reset expirations when MTE filters change
-  useEffect(() => {
-    if (data?.options) {
-      const allExps = Array.from(new Set(data.options.map(o => o.expiration)));
-      setSelectedExps(allExps);
-    }
-  }, [minMonths, maxMonths]);
+    // Scan with the incoming values directly: reading them back from state here
+    // would use what React has not re-rendered with yet.
+    void runScan({
+      ...scanParams,
+      strategyId: next,
+      minMonths: defaults.minMonths,
+      maxMonths: defaults.maxMonths,
+      deltaMagnitude: defaults.deltaMagnitude,
+    });
+  };
 
   const filteredOptions = useMemo(() => {
     if (!data) return [];
@@ -350,7 +378,7 @@ export default function OptionAnalyzer() {
               )}
 
               <button 
-                onClick={fetchOptions}
+                onClick={requestScan}
                 disabled={loading}
                 className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-black text-[13px] font-black uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
               >
@@ -426,7 +454,7 @@ export default function OptionAnalyzer() {
                   </div>
 
                   <button 
-                    onClick={fetchOptions}
+                    onClick={requestScan}
                     disabled={loading}
                     className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 disabled:bg-zinc-900 disabled:text-zinc-600 text-black text-xs font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 active:scale-[0.97] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                   >
@@ -670,7 +698,7 @@ export default function OptionAnalyzer() {
         setStrikeFilter={setStrikeFilter}
         addCustomFilter={(filter) => setCustomFilters(prev => [...prev.filter(f => f.id !== filter.id), filter])}
         setSortConfig={setGlobalSortConfig}
-        triggerFetch={() => setNeedsFetch(true)}
+        triggerFetch={requestScan}
       />
     </div>
   );

@@ -5,10 +5,15 @@ import React, { useState, useEffect, memo } from 'react';
 export const DualRangeSlider = memo(({ min, max, value, onChange, label, unit = "$" }: { min: number, max: number, value: [number, number], onChange: (val: [number, number]) => void, label?: string, unit?: string }) => {
   const [localValue, setLocalValue] = useState(value);
 
-  // Sync with parent when it changes externally (e.g. data fetch)
-  useEffect(() => {
+  // Sync with the parent when it changes externally (e.g. a fresh scan reset the
+  // strike bounds). Adjusting state during render rather than in an effect: no
+  // second pass, and the dependency is a plain comparison instead of two
+  // subscript expressions the linter cannot check.
+  const [syncedValue, setSyncedValue] = useState(value);
+  if (syncedValue[0] !== value[0] || syncedValue[1] !== value[1]) {
+    setSyncedValue(value);
     setLocalValue(value);
-  }, [value[0], value[1]]);
+  }
 
   // Debounced update to parent to keep things snappy
   useEffect(() => {

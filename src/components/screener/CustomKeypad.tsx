@@ -54,17 +54,18 @@ export const CustomKeypad = memo(({
   const emitNumber = onChange as (val: number) => void;
   const emitDates = onChange as (val: string[]) => void;
 
-  // Sync back to parent for non-immediate types (delta, strike) with a debounce
+  // Sync back to parent for non-immediate types (delta, strike) with a debounce.
+  // `onChange` is used directly rather than the narrowed `emitNumber`, which is
+  // a fresh cast every render and so cannot be an honest dependency.
   useEffect(() => {
-    if (type === 'delta' || type === 'strike') {
-      const timer = setTimeout(() => {
-        const numeric = parseFloat(localValue as string);
-        if (!isNaN(numeric)) {
-          emitNumber(numeric);
-        }
-      }, 100);
-      return () => clearTimeout(timer);
-    }
+    if (type !== 'delta' && type !== 'strike') return;
+    const timer = setTimeout(() => {
+      const numeric = parseFloat(localValue as string);
+      if (!isNaN(numeric)) {
+        (onChange as (val: number) => void)(numeric);
+      }
+    }, 100);
+    return () => clearTimeout(timer);
   }, [localValue, onChange, type]);
 
   const handleKey = useCallback((key: string) => {
