@@ -22,6 +22,7 @@ import { STRATEGIES, STRATEGY_IDS, DEFAULT_STRATEGY_ID, type StrategyId } from '
 import type { ScreenedOption, ScreenerResponse } from '@/lib/optionChain';
 import { matchesFilter, describeFilter, type CustomFilter } from '@/lib/filters';
 import { compileFormula, type ComputedColumn } from '@/lib/formula';
+import { describeScreen } from '@/lib/assistant/screenSummary';
 
 /** The enriched row the screener API returns. Shared with the server. */
 type OptionData = ScreenedOption;
@@ -227,6 +228,7 @@ export default function OptionAnalyzer() {
     setGlobalSortConfig((prev) => (prev.key === id ? { key: null, direction: null } : prev));
   };
 
+
   const allExpirations = useMemo(
     () =>
       data
@@ -289,6 +291,29 @@ export default function OptionAnalyzer() {
       },
     ];
   }, [filteredOptions]);
+
+  /**
+   * What the assistant's readScreen tool hands back. The summary itself lives
+   * in src/lib/assistant/screenSummary.ts so it can be tested without a model
+   * call — which matters, since the daily token budget makes prompting the
+   * real assistant an expensive way to check a string.
+   */
+  const readScreen = () =>
+    describeScreen({
+      data,
+      loading,
+      visible: filteredOptions,
+      strategyName: strategy.copy.name,
+      capital: capitalInput,
+      minMonths,
+      maxMonths,
+      deltaSign,
+      deltaMagnitude,
+      strikeFilter,
+      customFilters,
+      computedColumns,
+      sort: globalSortConfig,
+    });
 
   return (
     <div className="min-h-screen font-sans antialiased text-fg selection:bg-zinc-700 pb-28 md:pb-16">
@@ -850,6 +875,7 @@ export default function OptionAnalyzer() {
         addComputedColumn={addComputedColumn}
         setSortConfig={setGlobalSortConfig}
         triggerFetch={requestScan}
+        readScreen={readScreen}
       />
     </div>
   );

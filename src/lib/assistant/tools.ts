@@ -53,6 +53,8 @@ export const TOOL_PARAMETERS = {
     direction: SORT_DIRECTION.describe('Sort direction'),
   }),
 
+  readScreen: z.object({}),
+
   addComputedColumn: z.object({
     id: z.string().describe('A unique identifier for this column'),
     name: z.string().max(24).describe('A short column header, e.g. "OI x Yield"'),
@@ -106,6 +108,9 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   setSort:
     'Sort the option data table by a column. Column meanings: lastPrice is the per-share premium (the table\'s "Premium" column, and what "sort by premium" means); totalPremiumReceived is that premium times the number of contracts the user can afford; annualizedReturn is the yield. Use this for superlatives too: "cheapest" is lastPrice asc, "highest yield" is annualizedReturn desc.',
 
+  readScreen:
+    "Read what is currently on screen: the underlying and its last price, how many contracts the scan returned and how many are showing, the active filters and sort, and the top rows. EVERY other tool only changes settings and tells you nothing about the data, so this is the only way to answer a question about actual numbers — a price, a count, which contract is best. Call it before answering any such question rather than guessing. It reports the scan that has already loaded; if the user asks about a different underlying, call setTicker first, and note that a fresh scan takes a moment, so a follow-up read may be needed.",
+
   addComputedColumn:
     'Add a new column computed from the existing numeric columns, and sort by it. Use this whenever the user asks to rank or score by something that is not already a column — "sort by oi^2 + ann return^2", "score by yield per day", "premium times open interest". Give the formula as arithmetic over column names; the table sorts by the new column descending as soon as it is added, so you do not need to call setSort afterwards.',
 
@@ -131,6 +136,7 @@ export const assistantTools = {
     parameters: TOOL_PARAMETERS.setStrikeRange,
   }),
   setSort: tool({ description: DESCRIPTIONS.setSort, parameters: TOOL_PARAMETERS.setSort }),
+  readScreen: tool({ description: DESCRIPTIONS.readScreen, parameters: TOOL_PARAMETERS.readScreen }),
   addComputedColumn: tool({
     description: DESCRIPTIONS.addComputedColumn,
     parameters: TOOL_PARAMETERS.addComputedColumn,

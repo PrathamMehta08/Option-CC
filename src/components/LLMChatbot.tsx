@@ -26,6 +26,8 @@ interface LLMChatbotProps {
     direction: 'asc' | 'desc' | null;
   }) => void;
   triggerFetch: () => void;
+  /** A plain-text description of the loaded scan, for the readScreen tool. */
+  readScreen: () => string;
 }
 
 export default function LLMChatbot({
@@ -40,6 +42,7 @@ export default function LLMChatbot({
   addComputedColumn,
   setSortConfig,
   triggerFetch,
+  readScreen,
 }: LLMChatbotProps) {
   const [isOpen, setIsOpen] = useState(false);
   // Expanded is a display preference, so it stays local.
@@ -114,6 +117,9 @@ export default function LLMChatbot({
               result = added.ok
                 ? `Added column "${added.column.name}" = ${added.column.source}, sorted by it`
                 : `Formula rejected: ${added.error}`;
+            } else if (inv.toolName === 'readScreen') {
+              // The one tool that hands data back rather than changing state.
+              result = readScreen();
             } else if (inv.toolName === 'setSort') {
               setSortConfig(inv.args);
               result = `Sorted by ${inv.args.key} ${inv.args.direction}`;
