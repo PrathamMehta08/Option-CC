@@ -33,7 +33,6 @@ export const coveredCall: StrategyDefinition = {
 
   copy: {
     name: 'Covered Calls',
-    heading: 'Covered Call Analyzer',
     tableTitle: 'Best Covered Call Opportunities',
     seriesName: 'Calls',
     capitalColumnLabel: 'Stock Cost',

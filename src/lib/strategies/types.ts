@@ -64,8 +64,6 @@ export interface StrategyDefinition {
   copy: {
     /** Short name for the strategy switcher, e.g. "Covered Calls". */
     name: string;
-    /** Page heading, e.g. "Covered Call Analyzer". */
-    heading: string;
     /** Results table heading. */
     tableTitle: string;
     /** Chart series name. */

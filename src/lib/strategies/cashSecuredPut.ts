@@ -33,7 +33,6 @@ export const cashSecuredPut: StrategyDefinition = {
 
   copy: {
     name: 'Cash-Secured Puts',
-    heading: 'Cash-Secured Put Analyzer',
     tableTitle: 'Best Cash-Secured Put Opportunities',
     seriesName: 'Puts',
     capitalColumnLabel: 'Total Cap',

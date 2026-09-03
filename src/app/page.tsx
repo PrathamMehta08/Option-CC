@@ -82,6 +82,11 @@ export default function OptionAnalyzer() {
   const deferredStrikeFilter = useDeferredValue(strikeFilter);
   const deferredSelectedExps = useDeferredValue(selectedExps);
 
+  // Whether the screen is actually showing something for the current ticker.
+  // Everything that signals "loaded" keys off this one flag rather than each
+  // deciding for itself.
+  const hasResults = !!data && data.options.length > 0 && data.ticker === ticker;
+
   // Delta is displayed with the sign the active strategy actually screens on.
   const deltaSign = strategy.deltaWindow(1)[0] < 0 ? '-' : '';
 
@@ -325,8 +330,7 @@ export default function OptionAnalyzer() {
                <TrendingUp size={20} />
             </div>
             <h1 className="text-lg md:text-2xl font-bold tracking-tighter whitespace-nowrap">
-              <span className="sm:hidden">{strategy.copy.name}</span>
-              <span className="hidden sm:inline">{strategy.copy.heading}</span>
+              Options Analyzer
             </h1>
 
             {/* Strategy switcher: one deployment serves every strategy. */}
@@ -498,7 +502,13 @@ export default function OptionAnalyzer() {
                   value={ticker}
                   placeholder="NVDA"
                   onChange={(e) => setTicker(e.target.value.toUpperCase())}
-                  className="w-full bg-transparent text-2xl font-semibold tracking-tight text-fg placeholder:text-faint/50 focus:outline-none"
+                  className={cn(
+                    'w-full bg-transparent text-2xl font-semibold tracking-tight placeholder:text-faint/50 focus:outline-none transition-colors',
+                    // Bright white on a symbol with nothing behind it reads as
+                    // "loaded" when nothing is. It stays muted until a scan
+                    // actually returns rows for this ticker.
+                    hasResults ? 'text-fg' : 'text-dim'
+                  )}
                 />
                 <div className="flex items-center gap-2 text-[11px] font-mono">
                   {loading ? (
@@ -506,13 +516,19 @@ export default function OptionAnalyzer() {
                       <Loader2 className="animate-spin text-a1" size={11} />
                       <span className="text-dim">Scanning…</span>
                     </>
-                  ) : data ? (
+                  ) : error ? (
+                    <span className="text-warn">{error}</span>
+                  ) : hasResults ? (
                     <>
                       <span className="h-1.5 w-1.5 rounded-full bg-a1" />
                       <span className="text-dim">
-                        {data.options.length.toLocaleString()} contracts · ${data.currentPrice.toFixed(2)}
+                        {data!.options.length.toLocaleString()} contracts · ${data!.currentPrice.toFixed(2)}
                       </span>
                     </>
+                  ) : ticker ? (
+                    // A symbol is typed but the board came back empty — saying
+                    // "type a symbol" here is just wrong.
+                    <span className="text-faint">No contracts for {ticker} in this range</span>
                   ) : (
                     <span className="text-faint">Type a symbol to scan</span>
                   )}
