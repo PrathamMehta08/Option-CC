@@ -69,6 +69,12 @@ export function buildColumns(capitalColumnLabel: string, computed: ComputedColum
       value: (o) => o.annualizedReturn,
       format: (o) => `${o.annualizedReturn.toFixed(2)}%`,
     },
+    {
+      label: 'Ann. If Assigned',
+      key: 'annualizedReturnWithGain',
+      value: (o) => o.annualizedReturnWithGain,
+      format: (o) => `${o.annualizedReturnWithGain.toFixed(2)}%`,
+    },
     // User formulas become ordinary columns: sortable, and formatted like any
     // other number. A row the formula cannot score shows a dash.
     ...computed.map((c) => ({
@@ -105,6 +111,7 @@ const CARD_DETAIL_KEYS: (keyof OptionData)[] = [
   'maxContracts',
   'totalCapitalRequired',
   'totalPremiumReceived',
+  'annualizedReturnWithGain',
 ];
 
 export const ResultsTable = memo(({
@@ -401,6 +408,18 @@ export const ResultsTable = memo(({
                 <td className="px-4 py-4 text-right">
                   <span className="text-a1 font-bold tabular-nums text-sm">
                     {opt.annualizedReturn.toFixed(2)}%
+                  </span>
+                </td>
+                <td className="px-4 py-4 text-right">
+                  {/* Assignment can be a loss on an ITM call, so this one is
+                      signed rather than always reading as a gain. */}
+                  <span
+                    className={cn(
+                      'font-bold tabular-nums text-sm',
+                      opt.annualizedReturnWithGain < 0 ? 'text-warn' : 'text-a1'
+                    )}
+                  >
+                    {opt.annualizedReturnWithGain.toFixed(2)}%
                   </span>
                 </td>
                 {/* Computed columns follow the fixed ones, in the same order as

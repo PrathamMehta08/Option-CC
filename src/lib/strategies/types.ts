@@ -24,6 +24,17 @@ export interface StrategyDefinition {
    */
   capitalRequiredPerContract(quote: YahooOptionQuote, currentPrice: number): number;
 
+  /**
+   * Capital gain per share if the option is assigned, versus today's price.
+   *
+   * A covered call sells the shares at the strike, so assignment realises
+   * (strike - spot) — positive on an OTM call, negative on an ITM one. A
+   * cash-secured put assigns you INTO the stock at the strike; there is no sale
+   * and so no gain to book, which is why it returns 0 rather than the mirrored
+   * figure. Getting that backwards would show a put seller a phantom profit.
+   */
+  assignmentGainPerShare(quote: YahooOptionQuote, currentPrice: number): number;
+
   /** Black-Scholes delta for this contract type. */
   delta(S: number, K: number, t: number, sigma: number, r: number): number;
 

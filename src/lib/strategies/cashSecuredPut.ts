@@ -11,6 +11,11 @@ export const cashSecuredPut: StrategyDefinition = {
 
   capitalRequiredPerContract: (quote) => quote.strike * 100,
 
+  // Assignment buys stock at the strike rather than selling it, so there is no
+  // gain to realise. The return if assigned is the premium alone, which is what
+  // annualizedReturn already reports.
+  assignmentGainPerShare: () => 0,
+
   delta: calculatePutDelta,
 
   // Out-of-the-money only: selling an ITM put means expecting assignment.

@@ -12,6 +12,9 @@ export const coveredCall: StrategyDefinition = {
 
   capitalRequiredPerContract: (_quote, currentPrice) => currentPrice * 100,
 
+  // Assigned means the shares are called away at the strike.
+  assignmentGainPerShare: (quote, currentPrice) => quote.strike - currentPrice,
+
   delta: calculateCallDelta,
 
   // The whole chain is shown; ITM calls are a legitimate (if aggressive) covered

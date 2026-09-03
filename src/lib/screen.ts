@@ -56,6 +56,11 @@ export function screenExpiration(input: ExpirationInput, params: ScreenParams): 
     const premium = premiumPerContract(premiumPerShare);
     const returnPct = contractReturnPct(premium, capitalRequired);
 
+    // Assignment return: premium plus whatever the strike is worth against
+    // today's price. Same capital, same annualisation.
+    const gain = premiumPerContract(strategy.assignmentGainPerShare(contract, currentPrice));
+    const returnWithGainPct = contractReturnPct(premium + gain, capitalRequired);
+
     // Affordability is reported alongside, never folded into the returns.
     const maxContracts = maxContractsFor(capital, capitalRequired);
 
@@ -74,6 +79,8 @@ export function screenExpiration(input: ExpirationInput, params: ScreenParams): 
       premiumPerContract: premium,
       returnPct,
       annualizedReturn: annualizeReturn(returnPct, input.daysToExpiration),
+      returnWithGainPct,
+      annualizedReturnWithGain: annualizeReturn(returnWithGainPct, input.daysToExpiration),
       maxContracts,
       totalCapitalRequired: maxContracts * capitalRequired,
       totalPremiumReceived: maxContracts * premium,

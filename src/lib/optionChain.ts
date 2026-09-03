@@ -49,6 +49,16 @@ export interface ScreenedOption {
   /** `returnPct` scaled to a year. Never depends on affordability. */
   annualizedReturn: number;
 
+  /**
+   * Return if the option is assigned: the premium PLUS the capital gain from
+   * transacting at the strike instead of today's price, over the same capital.
+   * For a covered call this is the classic "return if called"; for a
+   * cash-secured put there is no sale, so it equals the premium-only figure.
+   */
+  returnWithGainPct: number;
+  /** `returnWithGainPct` scaled to a year. */
+  annualizedReturnWithGain: number;
+
   /** Informational: how many contracts the user's capital covers. May be 0. */
   maxContracts: number;
   totalCapitalRequired: number;
@@ -80,6 +90,7 @@ export const NUMERIC_FIELDS = [
   'totalCapitalRequired',
   'totalPremiumReceived',
   'annualizedReturn',
+  'annualizedReturnWithGain',
   'daysToExpiration',
 ] as const;
 
