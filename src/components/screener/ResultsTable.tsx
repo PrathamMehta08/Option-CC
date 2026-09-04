@@ -1,13 +1,21 @@
 'use client';
 
 import React, { useState, useMemo, memo } from 'react';
-import { Table as TableIcon, ArrowUpDown, ChevronUp, ChevronDown, ArrowDown, ArrowUp, X } from 'lucide-react';
-import { cn } from '@/lib/ui';
+import { Table as TableIcon, ArrowUpDown, ChevronUp, ChevronDown, ArrowDown, ArrowUp, X, Rows3, LayoutList } from 'lucide-react';
+import { cn, formatExpirationLabel } from '@/lib/ui';
+import { useIsMobile } from '@/lib/useMediaQuery';
 import type { ScreenedOption } from '@/lib/optionChain';
 import type { SortConfig } from './types';
 import type { ComputedColumn } from '@/lib/formula';
 
 type OptionData = ScreenedOption;
+
+/**
+ * How results are laid out on a phone. The table is the default: it is the
+ * denser, more comparable view, and the cards are for reading one contract
+ * rather than scanning many.
+ */
+export type MobileView = 'table' | 'cards';
 
 /** How many cards the mobile list reveals at a time. */
 const MOBILE_PAGE_SIZE = 25;
@@ -139,17 +147,24 @@ const CARD_DETAIL_KEYS: (keyof OptionData)[] = [
 
 export const ResultsTable = memo(({
   options, title, count, externalSortConfig, onExternalSortChange, capitalColumnLabel,
-  computedColumns = EMPTY_COMPUTED, onRemoveComputedColumn
+  computedColumns = EMPTY_COMPUTED, onRemoveComputedColumn,
+  mobileView, onMobileViewChange
 }: {
   options: OptionData[], title: string, count?: number,
   externalSortConfig?: SortConfig, onExternalSortChange?: (config: SortConfig) => void,
   capitalColumnLabel: string,
   computedColumns?: ComputedColumn[],
   onRemoveComputedColumn?: (id: string) => void,
+  /** Table or cards on a phone. Shared across tables, like the sort. */
+  mobileView: MobileView,
+  onMobileViewChange: (view: MobileView) => void,
 }) => {
-  // A phone should not paint 400+ cards on first render. Reveal in pages; the
+  // A phone should not paint 400+ rows on first render. Reveal in pages; the
   // desktop table keeps showing everything inside its own scroll container.
   const [mobilePageCount, setMobilePageCount] = useState(1);
+  // Rendering both layouts and hiding one with CSS costs a phone the whole
+  // table in DOM nodes it never paints, so only one is built.
+  const isMobile = useIsMobile();
   const [localSortConfig, setLocalSortConfig] = useState<SortConfig>({ key: null, direction: null });
   const sortConfig = externalSortConfig !== undefined ? externalSortConfig : localSortConfig;
 
@@ -221,7 +236,12 @@ export const ResultsTable = memo(({
 
   return (
     <div className="space-y-4 text-fg font-sans">
-      <div className="flex items-center justify-between gap-3 px-1">
+      <div
+        className={cn(
+          'gap-3 px-1',
+          isMobile ? 'flex flex-col items-stretch' : 'flex items-center justify-between'
+        )}
+      >
         <h3 className="min-w-0 text-[11px] font-bold tracking-normal text-dim flex items-center gap-2">
           <TableIcon size={12} className="shrink-0" />
           <span className="truncate">{title}</span>
@@ -234,7 +254,28 @@ export const ResultsTable = memo(({
 
         {/* Sorting on a phone: the table headers are off-screen behind a
             horizontal scroll, so mobile gets its own native control. */}
-        <div className="flex md:hidden items-center gap-1.5 shrink-0">
+        {isMobile && (
+        <div className="flex items-center gap-1.5">
+          <div className="flex items-center rounded-lg border border-line bg-bg-3 p-0.5" role="group" aria-label="Result layout">
+            {([
+              { id: 'table' as MobileView, Icon: Rows3, label: 'Table' },
+              { id: 'cards' as MobileView, Icon: LayoutList, label: 'Cards' },
+            ]).map(({ id, Icon, label }) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={mobileView === id}
+                aria-label={`${label} view`}
+                onClick={() => onMobileViewChange(id)}
+                className={cn(
+                  'h-[30px] w-[34px] flex items-center justify-center rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60',
+                  mobileView === id ? 'bg-a1/12 text-a1' : 'text-faint'
+                )}
+              >
+                <Icon size={14} />
+              </button>
+            ))}
+          </div>
           <label className="sr-only" htmlFor={`sort-${title}`}>Sort by</label>
           <select
             id={`sort-${title}`}
@@ -245,7 +286,7 @@ export const ResultsTable = memo(({
                 direction: e.target.value ? (sortConfig.direction ?? 'desc') : null,
               })
             }
-            className="bg-bg-3 border border-line rounded-lg py-2 pl-2.5 pr-7 text-[11px] text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60 appearance-none"
+            className="flex-1 min-w-0 bg-bg-3 border border-line rounded-lg py-2 pl-2.5 pr-7 text-[11px] text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60 appearance-none"
           >
             <option value="">Default order</option>
             {columns.map((col) => (
@@ -262,15 +303,17 @@ export const ResultsTable = memo(({
               })
             }
             aria-label={sortConfig.direction === 'asc' ? 'Sort descending' : 'Sort ascending'}
-            className="h-[34px] w-[34px] flex items-center justify-center bg-bg-3 border border-line rounded-lg text-fg-soft disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60"
+            className="h-[34px] w-[34px] shrink-0 flex items-center justify-center bg-bg-3 border border-line rounded-lg text-fg-soft disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60"
           >
             {sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
           </button>
         </div>
+        )}
       </div>
 
       {/* ---------------------------------------------------- mobile: cards */}
-      <ul className="md:hidden space-y-2">
+      {isMobile && mobileView === 'cards' && (
+      <ul className="space-y-2">
         {visibleOnMobile.map((opt, i) => (
           <li
             key={i}
@@ -334,12 +377,13 @@ export const ResultsTable = memo(({
           </li>
         ))}
       </ul>
+      )}
 
-      {hiddenOnMobile > 0 && (
+      {isMobile && hiddenOnMobile > 0 && (
         <button
           type="button"
           onClick={() => setMobilePageCount((n) => n + 1)}
-          className="md:hidden w-full py-3.5 rounded-lg border border-line bg-bg-2 text-[11px] font-bold tracking-normal text-fg-soft hover:bg-bg-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60"
+          className="w-full py-3.5 rounded-lg border border-line bg-bg-2 text-[11px] font-bold tracking-normal text-fg-soft hover:bg-bg-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60"
         >
           Show {Math.min(MOBILE_PAGE_SIZE, hiddenOnMobile)} more
           <span className="text-faint font-mono normal-case tracking-normal ml-2">
@@ -348,12 +392,25 @@ export const ResultsTable = memo(({
         </button>
       )}
 
-      {/* -------------------------------------------------- desktop: table */}
-      <div className="hidden md:block overflow-x-auto rounded-lg border border-line bg-bg-2/60 overflow-y-auto max-h-[600px] scrollbar-thin">
-        <table className="w-full text-left text-[11px] whitespace-nowrap border-collapse">
+      {/* --------------------------------------------------------- the table */}
+      {/* Full board on desktop inside its own scroll box; on a phone the same
+          table, paged, so the horizontal scroll is not also 400 rows deep. */}
+      {(!isMobile || mobileView === 'table') && (
+      <div className={cn(
+        'overflow-x-auto rounded-lg border border-line bg-bg-2/60 overflow-y-auto scrollbar-thin',
+        isMobile ? 'max-h-[70vh] -mx-1' : 'max-h-[600px]'
+      )}>
+        <table
+          className={cn(
+            'w-full text-left text-[11px] whitespace-nowrap border-collapse',
+            isMobile
+              ? '[&_td]:px-2.5 [&_td]:py-3 [&_th]:px-2.5 [&_th]:py-3'
+              : '[&_td]:px-4 [&_td]:py-4 [&_th]:px-4 [&_th]:py-4'
+          )}
+        >
           <thead className="bg-bg text-dim sticky top-0 z-10">
             <tr className="border-b border-line">
-              {columns.map((col) => (
+              {columns.map((col, i) => (
                 <th
                   key={col.key}
                   scope="col"
@@ -369,8 +426,11 @@ export const ResultsTable = memo(({
                       : 'none'
                   }
                   className={cn(
-                    'px-4 py-4 font-semibold tracking-normal transition-colors',
-                    sortConfig.key === col.key ? 'text-fg' : 'text-dim'
+                    'font-semibold tracking-normal transition-colors',
+                    sortConfig.key === col.key ? 'text-fg' : 'text-dim',
+                    // The pinned column needs an opaque background of its own to
+                    // let the rest of the header scroll under it.
+                    isMobile && i === 0 && 'sticky left-0 z-20 bg-bg border-r border-line'
                   )}
                 >
                   <div className="flex items-center gap-1">
@@ -402,38 +462,46 @@ export const ResultsTable = memo(({
             </tr>
           </thead>
           <tbody className="divide-y divide-line-soft border-none">
-            {processedOptions.map((opt, i) => (
+            {(isMobile ? visibleOnMobile : processedOptions).map((opt, i) => (
               <tr key={i} className="group hover:bg-bg-3/30 transition-colors">
-                <td className="px-4 py-4 text-fg-soft font-medium">{opt.expiration}</td>
-                <td className="px-4 py-4">
+                <td
+                  className={cn(
+                    'text-fg-soft font-medium',
+                    // Pinned, so it needs its own background to scroll under.
+                    isMobile && 'sticky left-0 z-10 bg-bg-2 border-r border-line'
+                  )}
+                >
+                  {isMobile ? formatExpirationLabel(opt.expiration) : opt.expiration}
+                </td>
+                <td >
                    <span className="px-2 py-1 bg-bg-3 border border-line rounded text-fg-soft font-medium font-mono text-[11px]">
                      {opt.daysToExpiration}d
                    </span>
                 </td>
-                <td className="px-4 py-4 font-bold text-fg tracking-tight">${opt.strike.toFixed(2)}</td>
-                <td className="px-4 py-4 text-fg-soft font-mono">${opt.lastPrice.toFixed(2)}</td>
-                <td className="px-4 py-4">
+                <td className="font-bold text-fg tracking-tight">${opt.strike.toFixed(2)}</td>
+                <td className="text-fg-soft font-mono">${opt.lastPrice.toFixed(2)}</td>
+                <td >
                   <span className={cn('font-mono', deltaTone(opt.delta))}>
                     {opt.delta.toFixed(3)}
                   </span>
                 </td>
-                <td className="px-4 py-4 text-dim font-mono">{opt.iv.toFixed(1)}%</td>
-                <td className="px-4 py-4 text-dim font-mono">{opt.moneyness.toFixed(1)}%</td>
-                <td className="px-4 py-4 text-faint font-mono">{opt.openInterest.toLocaleString()}</td>
-                <td className="px-4 py-4 text-faint font-mono">{opt.volume.toLocaleString()}</td>
-                <td className="px-4 py-4 text-fg-soft font-mono">{opt.maxContracts || '—'}</td>
-                <td className="px-4 py-4 text-dim font-mono">
+                <td className="text-dim font-mono">{opt.iv.toFixed(1)}%</td>
+                <td className="text-dim font-mono">{opt.moneyness.toFixed(1)}%</td>
+                <td className="text-faint font-mono">{opt.openInterest.toLocaleString()}</td>
+                <td className="text-faint font-mono">{opt.volume.toLocaleString()}</td>
+                <td className="text-fg-soft font-mono">{opt.maxContracts || '—'}</td>
+                <td className="text-dim font-mono">
                   {byKey.totalCapitalRequired.format(opt)}
                 </td>
-                <td className="px-4 py-4 text-dim font-mono">
+                <td className="text-dim font-mono">
                   {byKey.totalPremiumReceived.format(opt)}
                 </td>
-                <td className="px-4 py-4 text-right">
+                <td className="text-right">
                   <span className="text-a1 font-bold tabular-nums text-sm">
                     {opt.annualizedReturn.toFixed(2)}%
                   </span>
                 </td>
-                <td className="px-4 py-4 text-right">
+                <td className="text-right">
                   {/* Assignment can be a loss on an ITM call, so this one is
                       signed rather than always reading as a gain. */}
                   <span
@@ -445,10 +513,10 @@ export const ResultsTable = memo(({
                     {opt.annualizedReturnWithGain.toFixed(2)}%
                   </span>
                 </td>
-                <td className="px-4 py-4 text-fg-soft font-mono">
+                <td className="text-fg-soft font-mono">
                   {byKey.premiumSharePct.format(opt)}
                 </td>
-                <td className="px-4 py-4 text-right">
+                <td className="text-right">
                   <span
                     className={cn(
                       'font-mono tabular-nums',
@@ -461,7 +529,7 @@ export const ResultsTable = memo(({
                 {/* Computed columns follow the fixed ones, in the same order as
                     the header, so a formula lands in its own cell. */}
                 {computedColumns.map((c) => (
-                  <td key={c.id} className="px-4 py-4 font-mono text-a1">
+                  <td key={c.id} className="font-mono text-a1">
                     {byKey[c.id] ? byKey[c.id].format(opt) : '—'}
                   </td>
                 ))}
@@ -470,6 +538,7 @@ export const ResultsTable = memo(({
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 });

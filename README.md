@@ -128,11 +128,13 @@ npm run build
 ## How it works
 
 ```
-ticker ─> Yahoo quote (spot price)
-       ─> Yahoo expiration dates ──> filtered to the months range
-       ─> one option chain per expiration, fetched in parallel
+ticker ─> Yahoo quote (spot price + company name)
+       ─> every expiration Yahoo lists, fetched in parallel
+       ─> calls AND puts, trimmed to the fields the screener reads
                 │
-                ▼
+                ▼  ONE request per ticker. Everything below is local.
+                │
+       months range narrows the expirations
        strategy picks a side of the chain (calls or puts)
        strategy decides eligibility (cash-secured puts: OTM only)
                 │
@@ -150,6 +152,13 @@ ticker ─> Yahoo quote (spot price)
        sorted by annualized return ─> table + scatter charts
                                    ─> client-side filters (strike, expiry, assistant)
 ```
+
+**Yahoo is hit once per ticker.** The board for a symbol — both sides, every
+expiration — is fetched in one request and then filtered in the browser. Capital,
+delta, the months range, the strike range and the strategy switch are all pure
+functions of that payload, so none of them costs a round trip. Changing the delta
+slider used to refetch a dozen option chains; now it is arithmetic over data
+already in memory.
 
 **Premiums use the bid when it is available**, falling back to the mid of bid/ask and
 then to the last trade. The bid is what a seller can actually hit right now; the last
@@ -205,7 +214,7 @@ export const cashSecuredCall: StrategyDefinition = {
 src/
   app/
     page.tsx              screener UI
-    api/options/route.ts  fetch chains, screen them, return rows
+    api/chain/route.ts    fetch the whole board for one ticker, once
     api/chat/route.ts     assistant tool definitions
   components/
     LLMChatbot.tsx        chat panel; executes tool calls client-side

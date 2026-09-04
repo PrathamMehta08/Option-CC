@@ -23,6 +23,7 @@ type CustomKeypadProps =
       tickerPrice?: number;
       allExps?: string[];
       otmDirection?: 'above' | 'below';
+      hint?: React.ReactNode;
     }
   | {
       type: 'expirations';
@@ -32,6 +33,7 @@ type CustomKeypadProps =
       tickerPrice?: number;
       allExps?: string[];
       otmDirection?: 'above' | 'below';
+      hint?: React.ReactNode;
     };
 
 export const CustomKeypad = memo(({ 
@@ -41,7 +43,8 @@ export const CustomKeypad = memo(({
   onChange,
   tickerPrice,
   allExps,
-  otmDirection = 'below'
+  otmDirection = 'below',
+  hint
 }: CustomKeypadProps) => {
   // Use local state for the active editing value to prevent immediate parent re-renders
   const [localValue, setLocalValue] = useState<string | string[]>(() => {
@@ -98,7 +101,7 @@ export const CustomKeypad = memo(({
       {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 0].map(m => (
         <button 
           key={m}
-          onClick={() => { emitNumber(m); onClose(); }}
+          onClick={() => emitNumber(m)}
           className={cn(
             "text-xl font-medium transition-colors flex items-center justify-center",
             value === m ? "bg-zinc-100 text-zinc-900 hover:bg-white" : "bg-zinc-900/40 hover:bg-zinc-800/60 text-white",
@@ -220,6 +223,13 @@ export const CustomKeypad = memo(({
                 <span className="text-[11px] font-semibold tracking-normal text-zinc-500">Expiry Selection</span>
                 <button onClick={onClose} className="p-2 bg-zinc-900 rounded-full text-zinc-400"><X size={24} /></button>
              </div>
+             {/* What the last tap actually did to the board, so the sheet can
+                 stay open and still be informative. */}
+             {hint && (
+               <div className="px-4 py-2.5 border-b border-zinc-800 bg-zinc-950/40 text-[11px] font-mono text-zinc-400">
+                 {hint}
+               </div>
+             )}
              <MonthsGrid />
           </div>
         ) : type === 'expirations' ? (

@@ -1,4 +1,6 @@
-import type { ScreenedOption, YahooOptionQuote } from './optionChain';
+import { addMonths } from 'date-fns';
+import type { ScreenedOption, ScreenerResponse, YahooOptionQuote } from './optionChain';
+import type { ChainResponse } from './chain';
 import type { StrategyDefinition } from './strategies/types';
 import {
   annualizeReturn,
@@ -104,4 +106,78 @@ export function screenChain(
 ): ScreenedOption[] {
   const rows = expirations.flatMap((expiration) => screenExpiration(expiration, params));
   return rows.sort((a, b) => b.annualizedReturn - a.annualizedReturn);
+}
+
+/**
+ * Which expirations fall inside a month window, anchored to a given date.
+ *
+ * The anchor is the moment the chain was fetched, not `new Date()`. The rows
+ * carry a `daysToExpiration` computed at fetch time, so filtering against a
+ * later clock could hide an expiration whose own row says it is still 3 days
+ * out — a small inconsistency that reads as a bug.
+ */
+export function expirationsWithin<T extends { expiration: string }>(
+  expirations: T[],
+  minMonths: number,
+  maxMonths: number,
+  anchor: Date
+): T[] {
+  const start = addMonths(anchor, Math.min(minMonths, maxMonths));
+  const end = addMonths(anchor, Math.max(minMonths, maxMonths));
+  return expirations.filter((e) => {
+    // Expiration dates are date-only; compare at the end of that day so an
+    // expiry landing exactly on the window's first day is not excluded by the
+    // anchor's time-of-day.
+    const t = new Date(`${e.expiration}T23:59:59Z`).getTime();
+    return t >= start.getTime() && t <= end.getTime();
+  });
+}
+
+/**
+ * Screen a fetched chain into the response shape the UI renders.
+ *
+ * This is the whole pipeline that used to live in the API route. Keeping it
+ * pure means the client can re-run it whenever a knob moves — which is the
+ * point: capital, delta, months and strategy are all local arithmetic over a
+ * board we already have.
+ */
+export function screenLoadedChain(
+  chain: ChainResponse,
+  params: {
+    strategy: StrategyDefinition;
+    capital: number;
+    deltaMagnitude: number;
+    minMonths: number;
+    maxMonths: number;
+  }
+): ScreenerResponse {
+  const { strategy, capital, deltaMagnitude, minMonths, maxMonths } = params;
+  const anchor = new Date(chain.fetchedAt);
+
+  const inWindow = expirationsWithin(chain.expirations, minMonths, maxMonths, anchor);
+
+  const inputs: ExpirationInput[] = inWindow.map((e) => ({
+    expiration: e.expiration,
+    daysToExpiration: e.daysToExpiration,
+    contracts: e[strategy.chainSide],
+  }));
+
+  const options = screenChain(inputs, {
+    strategy,
+    currentPrice: chain.currentPrice,
+    capital,
+    deltaMagnitude,
+  });
+
+  return {
+    ticker: chain.ticker,
+    strategy: strategy.id,
+    currentPrice: chain.currentPrice,
+    options,
+    affordableCount: options.filter((r) => r.maxContracts > 0).length,
+    minCapitalRequired: options.length
+      ? Math.min(...options.map((r) => r.capitalRequiredPerContract))
+      : 0,
+    message: inWindow.length === 0 ? 'No expirations in the selected range.' : undefined,
+  };
 }

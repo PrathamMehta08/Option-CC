@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useDeferredValue, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useDeferredValue, useCallback } from 'react';
 import {
   Calendar,
   TrendingUp,
@@ -13,13 +13,16 @@ import {
 } from 'lucide-react';
 import LLMChatbot from '@/components/LLMChatbot';
 import { AnalysisChart } from '@/components/screener/AnalysisChart';
-import { ResultsTable } from '@/components/screener/ResultsTable';
+import { ResultsTable, type MobileView } from '@/components/screener/ResultsTable';
 import { DualRangeSlider } from '@/components/screener/DualRangeSlider';
 import { CustomKeypad } from '@/components/screener/CustomKeypad';
+import { StrikePresets } from '@/components/screener/StrikePresets';
 import type { SortConfig } from '@/components/screener/types';
 import { cn, formatNumberWithCommas, formatExpirationLabel } from '@/lib/ui';
 import { STRATEGIES, STRATEGY_IDS, DEFAULT_STRATEGY_ID, type StrategyId } from '@/lib/strategies';
-import type { ScreenedOption, ScreenerResponse } from '@/lib/optionChain';
+import type { ScreenedOption } from '@/lib/optionChain';
+import type { ChainResponse } from '@/lib/chain';
+import { screenLoadedChain } from '@/lib/screen';
 import { matchesFilter, describeFilter, type CustomFilter } from '@/lib/filters';
 import { compileFormula, type ComputedColumn } from '@/lib/formula';
 import { describeScreen } from '@/lib/assistant/screenSummary';
@@ -27,17 +30,8 @@ import { describeScreen } from '@/lib/assistant/screenSummary';
 /** The enriched row the screener API returns. Shared with the server. */
 type OptionData = ScreenedOption;
 
-type ApiResponse = ScreenerResponse & { error?: string };
-
-/** Everything the screener API needs for one scan. */
-interface ScanParams {
-  strategyId: StrategyId;
-  ticker: string;
-  capital: string;
-  minMonths: number;
-  maxMonths: number;
-  deltaMagnitude: number;
-}
+/** The chain endpoint's payload, plus the error shape it uses on failure. */
+type ChainApiResponse = ChainResponse & { error?: string };
 
 
 /** A label on the left, its control on the right — the sidebar's basic row. */
@@ -55,7 +49,12 @@ export default function OptionAnalyzer() {
   const strategy = STRATEGIES[strategyId];
 
   const [ticker, setTicker] = useState('');
-  const [data, setData] = useState<ApiResponse | null>(null);
+  /**
+   * The whole option board for the loaded ticker: both sides, every expiration.
+   * Fetched once per symbol and never refetched for a filter — capital, delta,
+   * months, strike and strategy are all pure functions of this.
+   */
+  const [chain, setChain] = useState<ChainResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [capitalInput, setCapitalInput] = useState('100,000');
@@ -70,6 +69,10 @@ export default function OptionAnalyzer() {
   const [customFilters, setCustomFilters] = useState<CustomFilter[]>([]);
   const [computedColumns, setComputedColumns] = useState<ComputedColumn[]>([]);
   const [globalSortConfig, setGlobalSortConfig] = useState<SortConfig>({ key: null, direction: null });
+  // One layout choice for every table on the page. Owned here for the same
+  // reason the sort is: two tables that disagree about their layout is a bug,
+  // not a feature.
+  const [mobileView, setMobileView] = useState<MobileView>('table');
 
   // Custom keypad state and handlers. The state has to come first: the handlers
   // close over its setter.
@@ -82,16 +85,11 @@ export default function OptionAnalyzer() {
   const deferredStrikeFilter = useDeferredValue(strikeFilter);
   const deferredSelectedExps = useDeferredValue(selectedExps);
 
-  // Whether the screen is actually showing something for the current ticker.
-  // Everything that signals "loaded" keys off this one flag rather than each
-  // deciding for itself.
-  const hasResults = !!data && data.options.length > 0 && data.ticker === ticker;
-
   // Delta is displayed with the sign the active strategy actually screens on.
   const deltaSign = strategy.deltaWindow(1)[0] < 0 ? '-' : '';
 
-  const prevTickerRef = useRef('');
   const capital = useMemo(() => capitalInput.replace(/[^0-9.]/g, ''), [capitalInput]);
+  const capitalNumber = parseFloat(capital) || 0;
 
   const handleCapitalChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value.replace(/[^0-9.]/g, '');
@@ -99,54 +97,25 @@ export default function OptionAnalyzer() {
   }, []);
 
   /**
-   * A scan takes its parameters explicitly rather than closing over state.
-   * That keeps it callable straight from an event handler with values React has
-   * not committed yet — the strategy switcher needs exactly that — and means no
-   * effect has to exist just to observe a "please refetch" flag.
+   * Load the board for one ticker. This is the entire network layer.
+   *
+   * Nothing else fetches: the screener used to ask the server for a *screened*
+   * board, so every knob — capital, delta, months, strategy — was a round trip
+   * to Yahoo for data already in the browser.
    */
-  const runScan = useCallback(async (params: ScanParams) => {
-    if (!params.ticker) return;
-    const tickerChanged = prevTickerRef.current !== params.ticker;
-    prevTickerRef.current = params.ticker;
-
+  const loadChain = useCallback(async (symbol: string) => {
+    if (!symbol) return;
     setLoading(true);
     setError(null);
-    setShowMobileFilters(false);
     try {
-      const query = new URLSearchParams({
-        strategy: params.strategyId,
-        ticker: params.ticker,
-        capital: params.capital,
-        minMonths: params.minMonths.toString(),
-        maxMonths: params.maxMonths.toString(),
-        delta: params.deltaMagnitude.toString(),
-      });
-      const res = await fetch(`/api/options?${query}`);
-      const json: ApiResponse = await res.json();
+      const res = await fetch(`/api/chain?ticker=${encodeURIComponent(symbol)}`);
+      const json: ChainApiResponse = await res.json();
       if (json.error) {
         setError(json.error);
+        setChain(null);
         return;
       }
-
-      setData(json);
-      if (json.options.length > 0) {
-        // Expirations always follow the new results. Carrying the old selection
-        // across a scan can leave every row filtered out by dates that are no
-        // longer on the board.
-        setSelectedExps(
-          Array.from(new Set(json.options.map((o) => o.expiration))).sort(
-            (a, b) => new Date(a).getTime() - new Date(b).getTime()
-          )
-        );
-        // The strike range is a user setting, so only reset it when the
-        // underlying changed and the old bounds are meaningless.
-        if (tickerChanged) {
-          const strikes = json.options.map((o) => o.strike);
-          // Whole numbers, widened outwards, to match the slider's track bounds
-          // — a fractional bound leaves the thumb unable to reach its own end.
-          setStrikeFilter([Math.floor(Math.min(...strikes)), Math.ceil(Math.max(...strikes))]);
-        }
-      }
+      setChain(json);
     } catch {
       setError('Failed to fetch data');
     } finally {
@@ -154,45 +123,40 @@ export default function OptionAnalyzer() {
     }
   }, []);
 
-  // The parameters a scan would use right now, straight from render scope — no
-  // ref, so nothing can go stale and nothing is written during render.
-  const scanParams: ScanParams = {
-    strategyId,
-    ticker,
-    capital,
-    minMonths,
-    maxMonths,
-    deltaMagnitude,
-  };
-
-  // Deliberately not memoised: it closes over this render's parameters, and its
-  // only consumers are the assistant and the retry action, neither of which
-  // keys off its identity.
-  const requestScan = () => {
-    void runScan(scanParams);
-  };
-
-  /**
-   * Scan whenever a parameter settles. Making the user press a button to see
-   * the effect of a slider they just dragged is the kind of friction that makes
-   * a tool feel like paperwork.
-   *
-   * Debounced so dragging a slider or typing a ticker fires one request, not
-   * thirty, and keyed on a string signature so the effect does not re-run on
-   * every render just because the params object is new.
-   */
-  const scanSignature = `${strategyId}|${ticker}|${capital}|${minMonths}|${maxMonths}|${deltaMagnitude}`;
+  // Debounced so typing a symbol fires one request rather than one per letter.
   useEffect(() => {
     if (!ticker) return;
-    const timer = setTimeout(() => {
-      void runScan({ strategyId, ticker, capital, minMonths, maxMonths, deltaMagnitude });
-    }, 500);
+    const timer = setTimeout(() => void loadChain(ticker), 400);
     return () => clearTimeout(timer);
-    // scanSignature is the debounce key; runScan is stable.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scanSignature, runScan]);
+  }, [ticker, loadChain]);
 
-  // Switching strategy resets the knobs to that strategy's defaults and rescans.
+  /**
+   * The screened board — a memo where there used to be a network request.
+   *
+   * Re-runs on any knob, over a chain already in memory, so a slider drag is
+   * arithmetic rather than a fetch.
+   */
+  const data = useMemo(
+    () =>
+      chain
+        ? screenLoadedChain(chain, {
+            strategy,
+            capital: capitalNumber,
+            deltaMagnitude,
+            minMonths,
+            maxMonths,
+          })
+        : null,
+    [chain, strategy, capitalNumber, deltaMagnitude, minMonths, maxMonths]
+  );
+
+  // Whether the screen is actually showing something for the current ticker.
+  // Everything that signals "loaded" keys off this one flag rather than each
+  // deciding for itself.
+  const hasResults = !!data && data.options.length > 0 && data.ticker === ticker;
+
+  // Switching strategy resets the knobs to that strategy's defaults. It reads
+  // the other side of a board already loaded, so it costs no request.
   const handleStrategyChange = (next: StrategyId) => {
     if (next === strategyId) return;
     const defaults = STRATEGIES[next].defaults;
@@ -200,11 +164,7 @@ export default function OptionAnalyzer() {
     setMinMonths(defaults.minMonths);
     setMaxMonths(defaults.maxMonths);
     setDeltaMagnitude(defaults.deltaMagnitude);
-    setStrikeFilter(defaults.strikeRange);
     setCustomFilters([]);
-    prevTickerRef.current = '';
-    // No explicit scan here: the debounced effect above sees the parameters
-    // change and runs one.
   };
 
   /**
@@ -243,6 +203,59 @@ export default function OptionAnalyzer() {
         : [],
     [data]
   );
+
+  /**
+   * Keep the expiration selection in step with the dates actually on the board.
+   *
+   * Moving the months slider changes which dates exist, and the chip list has to
+   * follow immediately — without closing whatever the user has open, which is
+   * what a refetch-and-reset used to do. Dates already on offer keep whatever
+   * the user did to them; dates that have just appeared arrive selected, so
+   * widening the window widens the results instead of silently adding nothing.
+   *
+   * Adjusting state during render is React's documented alternative to an
+   * effect for deriving state from a change: no extra pass, no cascading render.
+   */
+  const expSignature = allExpirations.join(',');
+  const [expSync, setExpSync] = useState<{ signature: string; offered: string[] }>({
+    signature: '',
+    offered: [],
+  });
+  if (expSync.signature !== expSignature) {
+    const previouslyOffered = expSync.offered;
+    setExpSync({ signature: expSignature, offered: allExpirations });
+    setSelectedExps((prev) =>
+      allExpirations.filter((e) => (previouslyOffered.includes(e) ? prev.includes(e) : true))
+    );
+  }
+
+  /**
+   * Strike slider bounds, taken from the whole board rather than the rows
+   * currently showing. Deriving them from the filtered set makes the track
+   * shrink around whatever you just did, so the handle keeps sliding out from
+   * under your finger.
+   */
+  const strikeBounds = useMemo((): [number, number] | null => {
+    if (!chain) return null;
+    const strikes = chain.expirations
+      .flatMap((e) => e[strategy.chainSide])
+      .filter((c) => strategy.isEligible(c, chain.currentPrice))
+      .map((c) => c.strike);
+    if (strikes.length === 0) return null;
+    // Whole numbers, widened outwards, to match the slider's own track bounds —
+    // a fractional bound leaves the thumb unable to reach its end.
+    return [Math.floor(Math.min(...strikes)), Math.ceil(Math.max(...strikes))];
+  }, [chain, strategy]);
+
+  // A strike range from another underlying — or from the other side of the
+  // chain — is meaningless, so reset it when the board itself changes. Not when
+  // a filter merely narrows what the board shows.
+  const boardKey = `${chain?.ticker ?? ''}|${strategyId}`;
+  const [seenBoard, setSeenBoard] = useState('');
+  if (strikeBounds && seenBoard !== boardKey) {
+    setSeenBoard(boardKey);
+    setStrikeFilter(strikeBounds);
+  }
 
   const filteredOptions = useMemo(() => {
     if (!data) return [];
@@ -296,6 +309,26 @@ export default function OptionAnalyzer() {
       },
     ];
   }, [filteredOptions]);
+
+  /**
+   * What the month sheet shows while it is open. The sheet covers the filter
+   * panel, so without this a tap on "6" has no visible effect until the sheet
+   * is dismissed — which is exactly the round trip that made picking a range
+   * feel like guessing.
+   */
+  const monthsHint = !chain ? (
+    'Load a ticker to see expirations'
+  ) : allExpirations.length === 0 ? (
+    <span className="text-warn">No expirations between {minMonths} and {maxMonths} months</span>
+  ) : (
+    <>
+      <span className="text-a1">{allExpirations.length}</span>
+      {allExpirations.length === 1 ? ' expiration' : ' expirations'}
+      {' · '}
+      {formatExpirationLabel(allExpirations[0])}
+      {allExpirations.length > 1 && ` → ${formatExpirationLabel(allExpirations[allExpirations.length - 1])}`}
+    </>
+  );
 
   /**
    * What the assistant's readScreen tool hands back. The summary itself lives
@@ -354,14 +387,21 @@ export default function OptionAnalyzer() {
           </div>
 
           <div className="flex items-center gap-4 md:gap-8">
-             {data && (
-               <div className="relative flex items-center gap-4 md:gap-6 bg-bg-2 px-3 md:px-4 py-2 rounded-lg border border-line">
+             {chain && data && (
+               <div className="relative flex items-center gap-4 md:gap-6 bg-bg-2 px-3 md:px-4 py-2 rounded-lg border border-line min-w-0">
                  <span
                    aria-hidden
                    className="absolute left-0 top-1/2 h-6 w-px -translate-y-1/2 bg-gradient-to-b from-transparent via-zinc-600 to-transparent"
                  />
-                 <div className="flex flex-col md:flex-row md:items-baseline gap-0.5 md:gap-3 leading-none text-fg">
-                   <p className="text-[11px] md:text-xs text-dim font-bold tracking-normal">{data.ticker}</p>
+                 <div className="flex flex-col md:flex-row md:items-baseline gap-0.5 md:gap-3 leading-none text-fg min-w-0">
+                   {/* The company's name, not its symbol: the symbol is already
+                       in the field the user typed it into. */}
+                   <p
+                     title={`${chain!.companyName} (${chain!.ticker})`}
+                     className="text-[11px] md:text-xs text-dim font-bold tracking-normal truncate max-w-[9rem] md:max-w-[16rem]"
+                   >
+                     {chain!.companyName}
+                   </p>
                    <p className="text-lg md:text-2xl font-semibold text-grad tabular-nums tracking-tight">
                      ${data.currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                    </p>
@@ -582,7 +622,7 @@ export default function OptionAnalyzer() {
                 />
               </div>
 
-              {data && data.options.length > 0 && (
+              {strikeBounds && (
                 <div className="p-4 space-y-3">
                   <div className="flex items-baseline justify-between">
                     <span className="font-mono text-[11px] text-faint">Strike range</span>
@@ -591,10 +631,17 @@ export default function OptionAnalyzer() {
                     </span>
                   </div>
                   <DualRangeSlider
-                    min={Math.min(...data.options.map((o) => o.strike))}
-                    max={Math.max(...data.options.map((o) => o.strike))}
+                    min={strikeBounds[0]}
+                    max={strikeBounds[1]}
                     value={strikeFilter}
                     onChange={setStrikeFilter}
+                  />
+                  <StrikePresets
+                    spot={chain!.currentPrice}
+                    bounds={strikeBounds}
+                    otmDirection={strategy.otmDirection}
+                    active={strikeFilter}
+                    onPick={setStrikeFilter}
                   />
                 </div>
               )}
@@ -751,7 +798,7 @@ export default function OptionAnalyzer() {
                 </dl>
 
                 {/* Top Picks */}
-                <ResultsTable title={strategy.copy.tableTitle} options={filteredOptions.slice(0, 10)} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} capitalColumnLabel={strategy.copy.capitalColumnLabel} computedColumns={computedColumns} onRemoveComputedColumn={removeComputedColumn} />
+                <ResultsTable title={strategy.copy.tableTitle} options={filteredOptions.slice(0, 10)} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} capitalColumnLabel={strategy.copy.capitalColumnLabel} computedColumns={computedColumns} onRemoveComputedColumn={removeComputedColumn} mobileView={mobileView} onMobileViewChange={setMobileView} />
 
                 {/* Charts */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6 text-fg font-sans">
@@ -760,7 +807,7 @@ export default function OptionAnalyzer() {
                 </div>
 
                 {/* Full Results */}
-                <ResultsTable title="Full Market Scan Results" options={filteredOptions} count={filteredOptions.length} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} capitalColumnLabel={strategy.copy.capitalColumnLabel} computedColumns={computedColumns} onRemoveComputedColumn={removeComputedColumn} />
+                <ResultsTable title="Full Market Scan Results" options={filteredOptions} count={filteredOptions.length} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} capitalColumnLabel={strategy.copy.capitalColumnLabel} computedColumns={computedColumns} onRemoveComputedColumn={removeComputedColumn} mobileView={mobileView} onMobileViewChange={setMobileView} />
               </div>
             ) : loading ? (
               // A skeleton in the shape of the real results reads as progress,
@@ -828,19 +875,21 @@ export default function OptionAnalyzer() {
 
       {/* Custom Keypad Bottom Sheets */}
       {activeKeypad === 'minMonths' && (
-        <CustomKeypad 
-          type="months" 
-          value={minMonths} 
-          onClose={handleCloseKeypad} 
-          onChange={setMinMonths} 
+        <CustomKeypad
+          type="months"
+          value={minMonths}
+          onClose={handleCloseKeypad}
+          onChange={setMinMonths}
+          hint={monthsHint}
         />
       )}
       {activeKeypad === 'maxMonths' && (
-        <CustomKeypad 
-          type="months" 
-          value={maxMonths} 
-          onClose={handleCloseKeypad} 
-          onChange={setMaxMonths} 
+        <CustomKeypad
+          type="months"
+          value={maxMonths}
+          onClose={handleCloseKeypad}
+          onChange={setMaxMonths}
+          hint={monthsHint}
         />
       )}
       {activeKeypad === 'delta' && (
@@ -877,8 +926,7 @@ export default function OptionAnalyzer() {
           value={selectedExps} 
           onClose={handleCloseKeypad} 
           onChange={setSelectedExps} 
-          allExps={Array.from(new Set(data.options.map(o => o.expiration)))
-            .sort((a, b) => new Date(a as string).getTime() - new Date(b as string).getTime()) as string[]}
+          allExps={allExpirations}
         />
       )}
       <LLMChatbot 
@@ -892,7 +940,7 @@ export default function OptionAnalyzer() {
         addCustomFilter={(filter) => setCustomFilters(prev => [...prev.filter(f => f.id !== filter.id), filter])}
         addComputedColumn={addComputedColumn}
         setSortConfig={setGlobalSortConfig}
-        triggerFetch={requestScan}
+        triggerFetch={() => void loadChain(ticker)}
         readScreen={readScreen}
       />
     </div>
