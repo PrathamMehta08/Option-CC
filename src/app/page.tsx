@@ -14,7 +14,7 @@ import {
 import LLMChatbot from '@/components/LLMChatbot';
 import { AnalysisChart } from '@/components/screener/AnalysisChart';
 import { ResultsTable, type MobileView } from '@/components/screener/ResultsTable';
-import { DualRangeSlider } from '@/components/screener/DualRangeSlider';
+import { NumericField, QuickPicks } from '@/components/screener/NumericField';
 import { CustomKeypad } from '@/components/screener/CustomKeypad';
 import { StrikePresets } from '@/components/screener/StrikePresets';
 import type { SortConfig } from '@/components/screener/types';
@@ -22,6 +22,7 @@ import { cn, formatNumberWithCommas, formatExpirationLabel } from '@/lib/ui';
 import { STRATEGIES, STRATEGY_IDS, DEFAULT_STRATEGY_ID, type StrategyId } from '@/lib/strategies';
 import type { ScreenedOption } from '@/lib/optionChain';
 import type { ChainResponse } from '@/lib/chain';
+import { MAX_MONTHS, asMonthWindow, withMonthsFrom, withMonthsTo } from '@/lib/monthWindow';
 import { screenLoadedChain } from '@/lib/screen';
 import { matchesFilter, describeFilter, type CustomFilter } from '@/lib/filters';
 import { compileFormula, type ComputedColumn } from '@/lib/formula';
@@ -33,6 +34,21 @@ type OptionData = ScreenedOption;
 /** The chain endpoint's payload, plus the error shape it uses on failure. */
 type ChainApiResponse = ChainResponse & { error?: string };
 
+
+/** The month windows worth a single click. */
+const MONTH_PRESETS: { label: string; value: [number, number] }[] = [
+  { label: '0–1', value: [0, 1] },
+  { label: '0–3', value: [0, 3] },
+  { label: '0–6', value: [0, 6] },
+  { label: '0–12', value: [0, 12] },
+  { label: 'all', value: [0, MAX_MONTHS] },
+];
+
+/** The deltas people actually screen at. */
+const DELTA_PRESETS = [0.1, 0.15, 0.2, 0.3, 0.4].map((v) => ({
+  label: v.toFixed(2),
+  value: v,
+}));
 
 /** A label on the left, its control on the right — the sidebar's basic row. */
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -58,8 +74,12 @@ export default function OptionAnalyzer() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [capitalInput, setCapitalInput] = useState('100,000');
-  const [minMonths, setMinMonths] = useState(strategy.defaults.minMonths);
-  const [maxMonths, setMaxMonths] = useState(strategy.defaults.maxMonths);
+  // The window is one value, not two numbers that happen to sit beside each
+  // other: that is what let them cross.
+  const [monthWindow, setMonthWindow] = useState<[number, number]>(() =>
+    asMonthWindow(strategy.defaults.minMonths, strategy.defaults.maxMonths)
+  );
+  const [minMonths, maxMonths] = monthWindow;
   // Always a positive magnitude; the strategy applies the sign (calls positive,
   // puts negative) when it builds the delta window.
   const [deltaMagnitude, setDeltaMagnitude] = useState(strategy.defaults.deltaMagnitude);
@@ -78,8 +98,29 @@ export default function OptionAnalyzer() {
   // close over its setter.
   const [activeKeypad, setActiveKeypad] = useState<'minMonths' | 'maxMonths' | 'delta' | 'strikeMin' | 'strikeMax' | 'expirations' | null>(null);
   const handleCloseKeypad = useCallback(() => setActiveKeypad(null), []);
-  const handleStrikeMinChange = useCallback((v: number) => setStrikeFilter(prev => [v, prev[1]]), []);
-  const handleStrikeMaxChange = useCallback((v: number) => setStrikeFilter(prev => [prev[0], v]), []);
+  const handleStrikeMinChange = useCallback(
+    (v: number) => setStrikeFilter((prev) => [v, Math.max(prev[1], v)]),
+    []
+  );
+  const handleStrikeMaxChange = useCallback(
+    (v: number) => setStrikeFilter((prev) => [Math.min(prev[0], v), v]),
+    []
+  );
+
+  /**
+   * Every route into the month window goes through these, so it can never end
+   * up inverted — not from the sidebar, not from a keypad, not from a model
+   * that emits a backwards pair. The rules themselves live in lib/monthWindow.
+   */
+  const setMonthsFrom = useCallback((v: number) => {
+    setMonthWindow((prev) => withMonthsFrom(prev, v));
+  }, []);
+  const setMonthsTo = useCallback((v: number) => {
+    setMonthWindow((prev) => withMonthsTo(prev, v));
+  }, []);
+  const setMonthsRange = useCallback((from: number, to: number) => {
+    setMonthWindow(asMonthWindow(from, to));
+  }, []);
 
   // Defer the filters and heavy data so the sliders stay snappy
   const deferredStrikeFilter = useDeferredValue(strikeFilter);
@@ -161,8 +202,7 @@ export default function OptionAnalyzer() {
     if (next === strategyId) return;
     const defaults = STRATEGIES[next].defaults;
     setStrategyId(next);
-    setMinMonths(defaults.minMonths);
-    setMaxMonths(defaults.maxMonths);
+    setMonthWindow(asMonthWindow(defaults.minMonths, defaults.maxMonths));
     setDeltaMagnitude(defaults.deltaMagnitude);
     setCustomFilters([]);
   };
@@ -585,57 +625,82 @@ export default function OptionAnalyzer() {
               </Field>
 
               <div className="p-4 space-y-3">
-                <div className="flex items-baseline justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <span className="font-mono text-[11px] text-faint">Months to expiry</span>
-                  <span className="font-mono text-sm text-fg">
-                    {minMonths}–{maxMonths}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <NumericField
+                      value={minMonths}
+                      onCommit={setMonthsFrom}
+                      min={0}
+                      max={MAX_MONTHS}
+                      ariaLabel="Months to expiry, from"
+                      width="w-14"
+                    />
+                    <span className="text-faint text-xs">→</span>
+                    <NumericField
+                      value={maxMonths}
+                      onCommit={setMonthsTo}
+                      min={0}
+                      max={MAX_MONTHS}
+                      ariaLabel="Months to expiry, to"
+                      width="w-14"
+                    />
+                  </div>
                 </div>
-                <DualRangeSlider
-                  min={0}
-                  max={24}
-                  value={[minMonths, maxMonths]}
-                  onChange={([min, max]) => { setMinMonths(min); setMaxMonths(max); }}
-                  unit=""
+                <QuickPicks
+                  options={MONTH_PRESETS}
+                  isActive={([from, to]) => from === minMonths && to === maxMonths}
+                  onPick={([from, to]) => setMonthsRange(from, to)}
                 />
               </div>
 
               <div className="p-4 space-y-3">
-                <div className="flex items-baseline justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <span className="font-mono text-[11px] text-faint">{strategy.copy.deltaLabel}</span>
-                  <span className="font-mono text-sm text-fg">{deltaSign}{deltaMagnitude.toFixed(2)}</span>
+                  <NumericField
+                    value={deltaMagnitude}
+                    onCommit={(v) => setDeltaMagnitude(Math.abs(v))}
+                    min={0}
+                    max={1}
+                    decimals={2}
+                    prefix={deltaSign || undefined}
+                    ariaLabel={strategy.copy.deltaLabel}
+                    width="w-20"
+                  />
                 </div>
-                <input
-                  type="range"
-                  min="0" max="1" step="0.01"
-                  value={deltaMagnitude}
-                  aria-label={strategy.copy.deltaLabel}
-                  onChange={(e) => setDeltaMagnitude(Math.abs(parseFloat(e.target.value)))}
-                  // Drives the filled portion of the track (see globals.css).
-                  // --fill is the percentage; --fill-n the same as a fraction,
-                  // which the track uses to cancel the thumb inset.
-                  style={{
-                    ['--fill' as string]: `${deltaMagnitude * 100}%`,
-                    ['--fill-n' as string]: deltaMagnitude,
-                  }}
-                  className="premium-slider"
+                <QuickPicks
+                  options={DELTA_PRESETS}
+                  isActive={(v) => Math.abs(v - deltaMagnitude) < 0.0005}
+                  onPick={setDeltaMagnitude}
                 />
               </div>
 
               {strikeBounds && (
                 <div className="p-4 space-y-3">
-                  <div className="flex items-baseline justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="font-mono text-[11px] text-faint">Strike range</span>
-                    <span className="font-mono text-sm text-fg">
-                      ${strikeFilter[0]}–${strikeFilter[1]}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <NumericField
+                        value={strikeFilter[0]}
+                        onCommit={handleStrikeMinChange}
+                        min={strikeBounds[0]}
+                        max={strikeBounds[1]}
+                        prefix="$"
+                        ariaLabel="Strike range, from"
+                        width="w-20"
+                      />
+                      <span className="text-faint text-xs">→</span>
+                      <NumericField
+                        value={strikeFilter[1]}
+                        onCommit={handleStrikeMaxChange}
+                        min={strikeBounds[0]}
+                        max={strikeBounds[1]}
+                        prefix="$"
+                        ariaLabel="Strike range, to"
+                        width="w-20"
+                      />
+                    </div>
                   </div>
-                  <DualRangeSlider
-                    min={strikeBounds[0]}
-                    max={strikeBounds[1]}
-                    value={strikeFilter}
-                    onChange={setStrikeFilter}
-                  />
                   <StrikePresets
                     spot={chain!.currentPrice}
                     bounds={strikeBounds}
@@ -879,7 +944,7 @@ export default function OptionAnalyzer() {
           type="months"
           value={minMonths}
           onClose={handleCloseKeypad}
-          onChange={setMinMonths}
+          onChange={setMonthsFrom}
           hint={monthsHint}
         />
       )}
@@ -888,7 +953,7 @@ export default function OptionAnalyzer() {
           type="months"
           value={maxMonths}
           onClose={handleCloseKeypad}
-          onChange={setMaxMonths}
+          onChange={setMonthsTo}
           hint={monthsHint}
         />
       )}
@@ -933,8 +998,8 @@ export default function OptionAnalyzer() {
         subtitle={strategy.copy.assistantSubtitle}
         setTicker={setTicker}
         setCapital={setCapitalInput}
-        setMinMonths={setMinMonths}
-        setMaxMonths={setMaxMonths}
+        setMinMonths={setMonthsFrom}
+        setMaxMonths={setMonthsTo}
         setDeltaMagnitude={setDeltaMagnitude}
         setStrikeFilter={setStrikeFilter}
         addCustomFilter={(filter) => setCustomFilters(prev => [...prev.filter(f => f.id !== filter.id), filter])}

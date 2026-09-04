@@ -157,8 +157,8 @@ ticker ─> Yahoo quote (spot price + company name)
 expiration — is fetched in one request and then filtered in the browser. Capital,
 delta, the months range, the strike range and the strategy switch are all pure
 functions of that payload, so none of them costs a round trip. Changing the delta
-slider used to refetch a dozen option chains; now it is arithmetic over data
-already in memory.
+used to refetch a dozen option chains; now it is arithmetic over data already in
+memory.
 
 **Premiums use the bid when it is available**, falling back to the mid of bid/ask and
 then to the last trade. The bid is what a seller can actually hit right now; the last
