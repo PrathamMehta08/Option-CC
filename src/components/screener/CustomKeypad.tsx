@@ -22,6 +22,7 @@ type CustomKeypadProps =
       onChange: (val: number) => void;
       tickerPrice?: number;
       allExps?: string[];
+      otmDirection?: 'above' | 'below';
     }
   | {
       type: 'expirations';
@@ -30,6 +31,7 @@ type CustomKeypadProps =
       onChange: (val: string[]) => void;
       tickerPrice?: number;
       allExps?: string[];
+      otmDirection?: 'above' | 'below';
     };
 
 export const CustomKeypad = memo(({ 
@@ -38,7 +40,8 @@ export const CustomKeypad = memo(({
   onClose, 
   onChange,
   tickerPrice,
-  allExps
+  allExps,
+  otmDirection = 'below'
 }: CustomKeypadProps) => {
   // Use local state for the active editing value to prevent immediate parent re-renders
   const [localValue, setLocalValue] = useState<string | string[]>(() => {
@@ -147,14 +150,17 @@ export const CustomKeypad = memo(({
   const NumericKeypad = () => {
     const presets = type === 'delta' 
       ? [0.10, 0.15, 0.20, 0.30, 0.40] 
-      : tickerPrice ? [
-          { label: '-0%', val: tickerPrice },
-          { label: '-5%', val: tickerPrice * 0.95 },
-          { label: '-10%', val: tickerPrice * 0.90 },
-          { label: '-15%', val: tickerPrice * 0.85 },
-          { label: '-20%', val: tickerPrice * 0.80 },
-          { label: '-25%', val: tickerPrice * 0.75 },
-        ] : [];
+      : tickerPrice
+        ? // Offsets run towards the money the strategy actually sells into:
+          // above spot for a covered call, below it for a cash-secured put.
+          [0, 5, 10, 15, 20, 25].map((pct) => {
+            const sign = otmDirection === 'above' ? 1 : -1;
+            return {
+              label: `${pct === 0 ? '' : sign > 0 ? '+' : '-'}${pct}%`,
+              val: tickerPrice * (1 + (sign * pct) / 100),
+            };
+          })
+        : [];
 
     return (
       <div className="flex flex-col h-full">

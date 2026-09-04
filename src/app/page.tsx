@@ -858,6 +858,7 @@ export default function OptionAnalyzer() {
           onClose={handleCloseKeypad} 
           onChange={handleStrikeMinChange} 
           tickerPrice={data.currentPrice}
+          otmDirection={strategy.otmDirection}
         />
       )}
       {activeKeypad === 'strikeMax' && data && (
@@ -867,6 +868,7 @@ export default function OptionAnalyzer() {
           onClose={handleCloseKeypad} 
           onChange={handleStrikeMaxChange} 
           tickerPrice={data.currentPrice}
+          otmDirection={strategy.otmDirection}
         />
       )}
       {activeKeypad === 'expirations' && data && (

@@ -59,6 +59,24 @@ export interface ScreenedOption {
   /** `returnWithGainPct` scaled to a year. */
   annualizedReturnWithGain: number;
 
+  /**
+   * How much of the assignment return is premium rather than capital gain,
+   * as a percentage. 100 means the whole return is premium; 40 means most of
+   * it depends on the stock actually rising to the strike.
+   *
+   * NaN when the assignment return is zero or negative — the share of a
+   * negative total is not a meaningful proportion, and reporting -25% there
+   * would read as a number rather than as "this does not apply".
+   */
+  premiumSharePct: number;
+
+  /**
+   * Dollar profit if assigned, across every contract the capital covers:
+   * (premium + gain at the strike) * maxContracts. 0 when nothing is
+   * affordable, and shown as a dash rather than $0.
+   */
+  totalProfitIfAssigned: number;
+
   /** Informational: how many contracts the user's capital covers. May be 0. */
   maxContracts: number;
   totalCapitalRequired: number;
@@ -91,6 +109,8 @@ export const NUMERIC_FIELDS = [
   'totalPremiumReceived',
   'annualizedReturn',
   'annualizedReturnWithGain',
+  'premiumSharePct',
+  'totalProfitIfAssigned',
   'daysToExpiration',
 ] as const;
 

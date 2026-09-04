@@ -64,6 +64,11 @@ export function screenExpiration(input: ExpirationInput, params: ScreenParams): 
     // Affordability is reported alongside, never folded into the returns.
     const maxContracts = maxContractsFor(capital, capitalRequired);
 
+    // Both figures are annualised by the same factor, so the ratio is the same
+    // whether taken on the period or the annualised return.
+    const premiumSharePct =
+      returnWithGainPct > 0 ? (returnPct / returnWithGainPct) * 100 : NaN;
+
     rows.push({
       expiration: input.expiration,
       daysToExpiration: input.daysToExpiration,
@@ -81,6 +86,8 @@ export function screenExpiration(input: ExpirationInput, params: ScreenParams): 
       annualizedReturn: annualizeReturn(returnPct, input.daysToExpiration),
       returnWithGainPct,
       annualizedReturnWithGain: annualizeReturn(returnWithGainPct, input.daysToExpiration),
+      premiumSharePct,
+      totalProfitIfAssigned: maxContracts * (premium + gain),
       maxContracts,
       totalCapitalRequired: maxContracts * capitalRequired,
       totalPremiumReceived: maxContracts * premium,

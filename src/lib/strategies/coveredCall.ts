@@ -15,6 +15,8 @@ export const coveredCall: StrategyDefinition = {
   // Assigned means the shares are called away at the strike.
   assignmentGainPerShare: (quote, currentPrice) => quote.strike - currentPrice,
 
+  otmDirection: 'above',
+
   delta: calculateCallDelta,
 
   // The whole chain is shown; ITM calls are a legitimate (if aggressive) covered

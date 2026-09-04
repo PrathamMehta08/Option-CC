@@ -75,6 +75,27 @@ export function buildColumns(capitalColumnLabel: string, computed: ComputedColum
       value: (o) => o.annualizedReturnWithGain,
       format: (o) => `${o.annualizedReturnWithGain.toFixed(2)}%`,
     },
+    {
+      label: 'Premium Share',
+      key: 'premiumSharePct',
+      value: (o) => o.premiumSharePct,
+      format: (o) =>
+        Number.isFinite(o.premiumSharePct) ? `${o.premiumSharePct.toFixed(1)}%` : '—',
+    },
+    {
+      label: 'Total If Assigned',
+      key: 'totalProfitIfAssigned',
+      value: (o) => o.totalProfitIfAssigned,
+      format: (o) =>
+        dashIfUnaffordable(
+          o,
+          () =>
+            `$${o.totalProfitIfAssigned.toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}`
+        ),
+    },
     // User formulas become ordinary columns: sortable, and formatted like any
     // other number. A row the formula cannot score shows a dash.
     ...computed.map((c) => ({
@@ -112,6 +133,8 @@ const CARD_DETAIL_KEYS: (keyof OptionData)[] = [
   'totalCapitalRequired',
   'totalPremiumReceived',
   'annualizedReturnWithGain',
+  'premiumSharePct',
+  'totalProfitIfAssigned',
 ];
 
 export const ResultsTable = memo(({
@@ -420,6 +443,19 @@ export const ResultsTable = memo(({
                     )}
                   >
                     {opt.annualizedReturnWithGain.toFixed(2)}%
+                  </span>
+                </td>
+                <td className="px-4 py-4 text-fg-soft font-mono">
+                  {byKey.premiumSharePct.format(opt)}
+                </td>
+                <td className="px-4 py-4 text-right">
+                  <span
+                    className={cn(
+                      'font-mono tabular-nums',
+                      opt.totalProfitIfAssigned < 0 ? 'text-warn' : 'text-fg-soft'
+                    )}
+                  >
+                    {byKey.totalProfitIfAssigned.format(opt)}
                   </span>
                 </td>
                 {/* Computed columns follow the fixed ones, in the same order as

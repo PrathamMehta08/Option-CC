@@ -16,6 +16,8 @@ export const cashSecuredPut: StrategyDefinition = {
   // annualizedReturn already reports.
   assignmentGainPerShare: () => 0,
 
+  otmDirection: 'below',
+
   delta: calculatePutDelta,
 
   // Out-of-the-money only: selling an ITM put means expecting assignment.

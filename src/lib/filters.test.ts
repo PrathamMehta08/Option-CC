@@ -30,6 +30,8 @@ function row(overrides: Partial<ScreenedOption> = {}): ScreenedOption {
     annualizedReturn: 6.34,
     returnWithGainPct: 0,
     annualizedReturnWithGain: 0,
+    premiumSharePct: 100,
+    totalProfitIfAssigned: 0,
     maxContracts: 0,
     totalCapitalRequired: 0,
     totalPremiumReceived: 0,

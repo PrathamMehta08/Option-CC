@@ -35,6 +35,15 @@ export interface StrategyDefinition {
    */
   assignmentGainPerShare(quote: YahooOptionQuote, currentPrice: number): number;
 
+  /**
+   * Which side of spot an out-of-the-money strike sits on.
+   *
+   * A covered call is sold above the market, a cash-secured put below it. The
+   * strike keypad's quick-picks are offsets from the current price, and
+   * offering -5% to a call seller is offering the strikes they least want.
+   */
+  otmDirection: 'above' | 'below';
+
   /** Black-Scholes delta for this contract type. */
   delta(S: number, K: number, t: number, sigma: number, r: number): number;
 

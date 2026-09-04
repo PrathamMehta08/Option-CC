@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { buildColumns } from './ResultsTable';
 import { compileFormula, type ComputedColumn } from '@/lib/formula';
 import type { ScreenedOption } from '@/lib/optionChain';
@@ -21,6 +22,8 @@ function row(overrides: Partial<ScreenedOption> = {}): ScreenedOption {
     annualizedReturn: 20,
     returnWithGainPct: 0,
     annualizedReturnWithGain: 0,
+    premiumSharePct: 100,
+    totalProfitIfAssigned: 0,
     maxContracts: 4,
     totalCapitalRequired: 88000,
     totalPremiumReceived: 800,
@@ -89,5 +92,44 @@ describe('a computed column behaves like any other', () => {
     const divide = buildColumns('Stock Cost', [columnFor('annualizedReturn / openInterest')]).at(-1)!;
     expect(divide.format(row({ openInterest: 0 }))).toBe('—');
     expect(divide.value(row({ openInterest: 0 }))).toBeNaN();
+  });
+});
+
+describe('the new assignment columns format for readers, not for maths', () => {
+  const col = (key: string) => buildColumns('Capital', []).find((c) => c.key === key)!;
+
+  it('shows premium share as a percentage', () => {
+    expect(col('premiumSharePct').format(row({ premiumSharePct: 16.6667 }))).toBe('16.7%');
+  });
+
+  it('dashes premium share when it does not apply', () => {
+    // NaN is how screen.ts says "the assignment return is not positive, so
+    // there is no share to take".
+    expect(col('premiumSharePct').format(row({ premiumSharePct: NaN }))).toBe('—');
+  });
+
+  it('shows total profit if assigned in dollars', () => {
+    expect(
+      col('totalProfitIfAssigned').format(row({ maxContracts: 2, totalProfitIfAssigned: 2400 }))
+    ).toBe('$2,400.00');
+  });
+
+  it('dashes total profit when the capital covers no contracts', () => {
+    expect(
+      col('totalProfitIfAssigned').format(row({ maxContracts: 0, totalProfitIfAssigned: 0 }))
+    ).toBe('—');
+  });
+});
+
+describe('the table body stays aligned with the header', () => {
+  // The desktop body cells are written out by hand rather than mapped from the
+  // column list, so a new header with no matching <td> silently shifts every
+  // column after it. This is the guard for that.
+  it('has one hardcoded cell per fixed column', () => {
+    const src = readFileSync(new URL('./ResultsTable.tsx', import.meta.url), 'utf8');
+    const body = src.slice(src.indexOf('<tbody'), src.indexOf('</tbody>'));
+    // The computed columns are mapped, so exclude their keyed cell.
+    const hardcoded = (body.match(/<td(?! key=)[ \n>]/g) ?? []).length;
+    expect(hardcoded).toBe(buildColumns('Capital', []).length);
   });
 });
