@@ -17,33 +17,6 @@ type OptionData = ScreenedOption;
  */
 export type MobileView = 'table' | 'cards';
 
-/**
- * How many columns the table shows.
- *
- * All sixteen come to about 1550px, which no sensible window fits beside the
- * sidebar — so the table always scrolled sideways, and reading a row meant
- * dragging a scrollbar to reach the number you wanted. 'essential' is the set
- * that fits: identity, the two figures the screen is actually ranked on, and
- * what it costs. Everything is one click away, and nothing is thrown out.
- */
-export type ColumnDensity = 'essential' | 'all';
-
-/**
- * The compact set, in table order. Chosen to answer "which contract, when, for
- * how much, at what return" without reaching for a scrollbar.
- */
-const ESSENTIAL_KEYS: ReadonlySet<string> = new Set([
-  'expiration',
-  'daysToExpiration',
-  'strike',
-  'lastPrice',
-  'delta',
-  'iv',
-  'maxContracts',
-  'annualizedReturn',
-  'annualizedReturnWithGain',
-]);
-
 /** How many cards the mobile list reveals at a time. */
 const MOBILE_PAGE_SIZE = 25;
 
@@ -82,7 +55,6 @@ const signedTone = (v: number) => (v < 0 ? 'text-warn' : 'text-a1');
 export function buildColumns(
   capitalColumnLabel: string,
   computed: ComputedColumn[],
-  density: ColumnDensity = 'all',
   /** Phones get "Sep 11" rather than "2026-09-11"; the column is pinned there. */
   shortDates = false
 ): Column[] {
@@ -218,10 +190,9 @@ export function buildColumns(
   ];
 
   return [
-    ...(density === 'essential' ? fixed.filter((c) => ESSENTIAL_KEYS.has(c.key)) : fixed),
+    ...fixed,
     // User formulas become ordinary columns: sortable, and formatted like any
-    // other number. A row the formula cannot score shows a dash. They survive
-    // the compact set — a formula is asked for, not inherited.
+    // other number. A row the formula cannot score shows a dash.
     ...computed.map((c) => ({
       label: c.name,
       key: c.id,
@@ -265,7 +236,7 @@ const CARD_DETAIL_KEYS: (keyof OptionData)[] = [
 export const ResultsTable = memo(({
   options, title, count, externalSortConfig, onExternalSortChange, capitalColumnLabel,
   computedColumns = EMPTY_COMPUTED, onRemoveComputedColumn,
-  mobileView, onMobileViewChange, density, onDensityChange
+  mobileView, onMobileViewChange
 }: {
   options: OptionData[], title: string, count?: number,
   externalSortConfig?: SortConfig, onExternalSortChange?: (config: SortConfig) => void,
@@ -275,9 +246,6 @@ export const ResultsTable = memo(({
   /** Table or cards on a phone. Shared across tables, like the sort. */
   mobileView: MobileView,
   onMobileViewChange: (view: MobileView) => void,
-  /** How many columns to show. Shared across tables, like the sort. */
-  density: ColumnDensity,
-  onDensityChange: (density: ColumnDensity) => void,
 }) => {
   // A phone should not paint 400+ rows on first render. Reveal in pages; the
   // desktop table keeps showing everything inside its own scroll container.
@@ -289,8 +257,8 @@ export const ResultsTable = memo(({
   const sortConfig = externalSortConfig !== undefined ? externalSortConfig : localSortConfig;
 
   const columns = useMemo(
-    () => buildColumns(capitalColumnLabel, computedColumns, density, isMobile),
-    [capitalColumnLabel, computedColumns, density, isMobile]
+    () => buildColumns(capitalColumnLabel, computedColumns, isMobile),
+    [capitalColumnLabel, computedColumns, isMobile]
   );
   const byKey = useMemo(
     () => Object.fromEntries(columns.map((c) => [c.key, c])) as Record<string, Column>,
@@ -369,46 +337,10 @@ export const ResultsTable = memo(({
           )}
         </h3>
 
-        {/* One control on desktop; on a phone it joins the row below, and
-            only in the table view where columns mean anything. */}
-        {(!isMobile || mobileView === 'table') && (
-          <div className={cn('flex items-center gap-1.5', isMobile && 'order-2')}>
-            <div
-              className="flex items-center rounded-lg border border-line bg-bg-3 p-0.5"
-              role="group"
-              aria-label="Columns"
-            >
-              {([
-                { id: 'essential' as ColumnDensity, label: 'Key' },
-                { id: 'all' as ColumnDensity, label: 'All' },
-              ]).map(({ id, label }) => (
-                <button
-                  key={id}
-                  type="button"
-                  aria-pressed={density === id}
-                  aria-label={id === 'essential' ? 'Key columns' : 'All columns'}
-                  title={
-                    id === 'essential'
-                      ? 'The columns that fit without scrolling sideways'
-                      : 'Every column'
-                  }
-                  onClick={() => onDensityChange(id)}
-                  className={cn(
-                    'h-[30px] px-2.5 flex items-center justify-center rounded-md text-[11px] font-bold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60',
-                    density === id ? 'bg-a1/12 text-a1' : 'text-faint hover:text-fg-soft'
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Sorting on a phone: the table headers are off-screen behind a
             horizontal scroll, so mobile gets its own native control. */}
         {isMobile && (
-        <div className="flex items-center gap-1.5 order-3">
+        <div className="flex items-center gap-1.5">
           <div className="flex items-center rounded-lg border border-line bg-bg-3 p-0.5" role="group" aria-label="Result layout">
             {([
               { id: 'table' as MobileView, Icon: Rows3, label: 'Table' },
@@ -557,8 +489,8 @@ export const ResultsTable = memo(({
           className={cn(
             'w-full text-left text-[11px] whitespace-nowrap border-collapse',
             isMobile
-              ? '[&_td]:px-2.5 [&_td]:py-3 [&_th]:px-2.5 [&_th]:py-3'
-              : '[&_td]:px-4 [&_td]:py-4 [&_th]:px-4 [&_th]:py-4'
+              ? '[&_td]:px-2.5 [&_td]:py-3 [&_th]:px-2.5 [&_th]:py-2.5'
+              : '[&_td]:px-3 [&_td]:py-4 [&_th]:px-3 [&_th]:py-2.5'
           )}
         >
           <thead className="bg-bg text-dim sticky top-0 z-10">
@@ -579,7 +511,8 @@ export const ResultsTable = memo(({
                       : 'none'
                   }
                   className={cn(
-                    'font-semibold tracking-normal transition-colors',
+                    // Headers wrap; the numbers under them do not.
+                    'font-semibold tracking-normal transition-colors whitespace-normal align-bottom',
                     sortConfig.key === col.key ? 'text-fg' : 'text-dim',
                     // The pinned column needs an opaque background of its own to
                     // let the rest of the header scroll under it.
@@ -591,7 +524,7 @@ export const ResultsTable = memo(({
                       type="button"
                       onClick={() => handleSort(col.key)}
                       title={col.computed ? `${col.computed.source} — click to sort` : `Sort by ${col.label}`}
-                      className="flex items-center group cursor-pointer hover:text-fg-soft transition-colors rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+                      className="flex items-start text-left group cursor-pointer hover:text-fg-soft transition-colors rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
                     >
                       {col.label}
                       <SortIcon colKey={col.key} />

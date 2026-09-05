@@ -126,7 +126,7 @@ describe('the table body stays aligned with the header', () => {
   // from this list now, so the alignment is structural rather than maintained —
   // what is left to check is that the list itself is coherent.
   it('gives every column something to render with', () => {
-    for (const col of buildColumns('Capital', [], 'all')) {
+    for (const col of buildColumns('Capital', [])) {
       expect(typeof col.format(row())).toBe('string');
       expect(col.key).toBeTruthy();
       expect(col.label).toBeTruthy();
@@ -134,56 +134,15 @@ describe('the table body stays aligned with the header', () => {
   });
 
   it('has no duplicate keys, which React would render as one cell', () => {
-    const keys = buildColumns('Capital', [], 'all').map((c) => c.key);
+    const keys = buildColumns('Capital', []).map((c) => c.key);
     expect(new Set(keys).size).toBe(keys.length);
   });
 });
 
-describe('column density', () => {
-  // Sixteen columns come to about 1550px, which never fits beside the sidebar,
-  // so the table always scrolled sideways. The compact set is the default.
-  it('shows fewer columns than the full set', () => {
-    const all = buildColumns('Capital', [], 'all');
-    const essential = buildColumns('Capital', [], 'essential');
-    expect(essential.length).toBeLessThan(all.length);
-    expect(essential.length).toBeGreaterThan(0);
-  });
-
-  it('keeps the columns a decision actually turns on', () => {
-    const keys = buildColumns('Capital', [], 'essential').map((c) => c.key);
-    // Identity, cost, and the two figures the screen is ranked on.
-    expect(keys).toContain('expiration');
-    expect(keys).toContain('strike');
-    expect(keys).toContain('lastPrice');
-    expect(keys).toContain('annualizedReturn');
-    expect(keys).toContain('annualizedReturnWithGain');
-  });
-
-  it('keeps the compact set a subset, in the same order', () => {
-    const all = buildColumns('Capital', [], 'all').map((c) => c.key);
-    const essential = buildColumns('Capital', [], 'essential').map((c) => c.key);
-    expect(all.filter((k) => essential.includes(k))).toEqual(essential);
-  });
-
-  it('never drops a computed column, which the user asked for by name', () => {
-    const c = columnFor('oi * 2');
-    for (const density of ['essential', 'all'] as const) {
-      const keys = buildColumns('Capital', [c], density).map((k) => k.key);
-      expect(keys).toContain(c.id);
-    }
-  });
-
-  it('defaults to the full set, so a caller that does not care loses nothing', () => {
-    // Compared by key: every column carries fresh closures, so the objects
-    // themselves are never equal across two calls.
-    expect(buildColumns('Capital', []).map((c) => c.key)).toEqual(
-      buildColumns('Capital', [], 'all').map((c) => c.key)
-    );
-  });
-
-  it('shortens the date only when asked, for the pinned phone column', () => {
-    const long = buildColumns('Capital', [], 'all', false)[0];
-    const short = buildColumns('Capital', [], 'all', true)[0];
+describe('the date column', () => {
+  it('shortens only when asked, for the pinned phone column', () => {
+    const long = buildColumns('Capital', [], false)[0];
+    const short = buildColumns('Capital', [], true)[0];
     expect(long.format(row({ expiration: '2026-09-11' }))).toBe('2026-09-11');
     expect(short.format(row({ expiration: '2026-09-11' }))).toBe('Sep 11');
     // The sortable value stays the full date either way — 'Sep 11' does not sort.

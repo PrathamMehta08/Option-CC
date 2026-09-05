@@ -100,15 +100,23 @@ table,
    content box instead leaves that gap genuinely transparent, so it floats on
    whatever it is over.
 
-   Firefox exposes none of these parts; it takes width and colour only, and is
-   given the same idea through the two standard properties — but only where the
-   pseudo-elements are unavailable. Chromium supports both, and setting either
-   standard property there makes it IGNORE every ::-webkit-scrollbar rule
-   below, which would quietly undo all of this. */
-@supports not selector(::-webkit-scrollbar) {
+   Firefox exposes none of these parts; it takes width and colour only, through
+   the two standard properties. Those have to be kept away from Chromium, which
+   supports both and IGNORES every ::-webkit-scrollbar rule the moment either is
+   set — so applying them broadly quietly undoes the whole block below.
+
+   The gate is a Firefox-only feature query. `@supports not
+   selector(::-webkit-scrollbar)` reads like the right test but did not reach
+   Firefox in practice — it kept the platform's own light-grey bars on a
+   near-black page. `-moz-appearance` needs no reasoning about how a browser
+   answers a question about a pseudo-element: it is a property only Firefox
+   has, so the block lands there and nowhere else. */
+@supports (-moz-appearance: none) {
   * {
     scrollbar-width: thin;
-    scrollbar-color: var(--line) transparent;
+    /* A touch lighter than the Chromium thumb: Firefox draws no hover state,
+       so this colour is the only one it ever gets. */
+    scrollbar-color: #2a3040 transparent;
   }
 }
 
