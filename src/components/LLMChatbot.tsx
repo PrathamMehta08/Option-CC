@@ -284,12 +284,17 @@ export default function LLMChatbot({
         }
         // A filter asked for in the same breath as the settings. Applied here
         // rather than left to a second call the model does not always make.
-        if (a.filter != null) {
-          const raw = a.filter as Record<string, unknown>;
+        if (a.filterField != null) {
+          const op = String(a.filterOp ?? 'gt');
+          const value =
+            op === 'between'
+              ? [Number(a.filterValue), Number(a.filterValueHigh)]
+              : [Number(a.filterValue)];
           const parsed = parseCustomFilter({
             id: `f${Date.now().toString(36)}`,
+            name: `${a.filterField} ${op} ${value.join('-')}`,
             mode: 'and',
-            ...raw,
+            conditions: [{ field: String(a.filterField), op, value }],
           });
           if (!parsed.ok) {
             return `Filter rejected: ${parsed.error}. Valid fields are the numeric columns; valid operators are gt, gte, lt, lte, eq, between.`;

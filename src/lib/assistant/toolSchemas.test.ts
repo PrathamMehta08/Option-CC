@@ -75,10 +75,6 @@ describe('applySettings, the one every request goes through', () => {
   it('lets every field be null, so an unmentioned setting is left alone', () => {
     const properties = jsonSchemaFor('applySettings').properties ?? {};
     for (const [key, property] of Object.entries(properties)) {
-      // filter is the exception, and deliberately so: a nullable OBJECT
-      // serialises as anyOf, which the provider rejects. It is optional only,
-      // which the empty required list above already makes safe to omit.
-      if (key === 'filter') continue;
       const type = (property as { type?: unknown }).type;
       expect(Array.isArray(type) && type.includes('null'), `${key} must accept null`).toBe(true);
     }
@@ -124,6 +120,54 @@ describe('applySettings tolerates a model that sends only what it means', () => 
       minStrikePctOfSpot: null,
       maxStrikePctOfSpot: null,
       strategy: null,
+    });
+    expect(parsed.success).toBe(true);
+  });
+});
+
+/**
+ * The filter fields, which have now been rejected by the provider in both of
+ * the shapes that seemed natural:
+ *
+ *   - a NULLABLE object → "anyOf disambiguation failed";
+ *   - an OPTIONAL object → the model sends `"filter": null` anyway, and the
+ *     provider answers "/filter: expected object, but got null".
+ *
+ * Nullable scalars are the shape that survives both, so the shape is asserted.
+ */
+describe('the filter travels as flat nullable scalars', () => {
+  it('declares no object-typed property', () => {
+    const properties = Object.values(jsonSchemaFor('applySettings').properties ?? {});
+    for (const property of properties) {
+      expect((property as { type?: unknown }).type).not.toBe('object');
+    }
+  });
+
+  it('accepts a filter alongside the settings', () => {
+    const parsed = TOOL_PARAMETERS.applySettings.safeParse({
+      ticker: 'AAPL',
+      minMonths: 6,
+      maxMonths: 12,
+      filterField: 'iv',
+      filterOp: 'gt',
+      filterValue: 40,
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('accepts explicit nulls for every filter field, which is what broke', () => {
+    // Verbatim the rejected call: a model filling in every key it knows about.
+    const parsed = TOOL_PARAMETERS.applySettings.safeParse({
+      ticker: 'NVDA',
+      capital: 100000,
+      minMonths: 6,
+      maxMonths: 12,
+      delta: 1,
+      minStrikePctOfSpot: 115,
+      filterField: null,
+      filterOp: null,
+      filterValue: null,
+      filterValueHigh: null,
     });
     expect(parsed.success).toBe(true);
   });

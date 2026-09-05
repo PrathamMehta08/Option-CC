@@ -101,20 +101,29 @@ export const TOOL_PARAMETERS = {
     // filter IV above 40", it set the screen, worked the answer out from the
     // rows it could see, and said what the filter WOULD do without ever
     // applying it. The user was left with a claim they could not check.
-    // .optional() and not .nullable(): a nullable object serialises as anyOf,
-    // which this provider rejects in tool parameters.
-    filter: z
-      .object({
-        name: z.string().describe('Short chip label, e.g. "IV > 40"'),
-        mode: z.enum(['and', 'or']).optional().describe('All conditions (and, the default) or any (or)'),
-        conditions: z
-          .array(FilterConditionToolSchema)
-          .min(1)
-          .max(10)
-          .describe('Column, operator, value. "between" takes [low, high]; others take one number.'),
-      })
-      .optional()
-      .describe('A filter on numeric columns to apply along with these settings'),
+    //
+    // Flat scalars, not a nested object, and this is not a style choice. A
+    // nullable object serialises as anyOf, which the provider rejects; an
+    // optional object gets sent as `"filter": null` by a model filling in
+    // every key it knows about, and the provider rejects that too — "expected
+    // object, but got null". Nullable scalars are the one shape that survives
+    // both. Several conditions at once still go through addCustomFilter.
+    filterField: z
+      .string()
+      .nullish()
+      .describe('Column to filter on, e.g. "iv" or "openInterest", or null for no filter'),
+    filterOp: z
+      .string()
+      .nullish()
+      .describe('gt, gte, lt, lte, eq or between — required when filterField is given'),
+    filterValue: z
+      .number()
+      .nullish()
+      .describe('The number to compare against; the low end when filterOp is between'),
+    filterValueHigh: z
+      .number()
+      .nullish()
+      .describe('The high end, for filterOp between only; otherwise null'),
   }),
 
   readScreen: z.object({}),
@@ -192,7 +201,7 @@ const DESCRIPTIONS: Record<ToolName, string> = {
     'Filter on numeric columns, for conditions the dedicated tools do not cover ("IV above 50", "open interest over 500"). Conditions are data, not code. Only the listed columns and operators exist; if the user asks for one outside them, do not call this tool.',
 
   applySettings:
-    'Set any screener setting — ticker, capital, expiry window, delta, strike range, strategy — and get the resulting screen back. Set everything a request asks for in ONE call; a second call is another round trip that can exhaust the rate limit. Pass null for every field not mentioned; those are left alone. Months are whole numbers 0-24 ("within 3 months" is 0-3). Delta 0.3 and 30 both mean a 30 delta. Use minStrike/maxStrike to bound the strike, not addCustomFilter — or minStrikePctOfSpot/maxStrikePctOfSpot to express it relative to the current price (115 means 15% above), which needs no knowledge of that price. Its result already contains everything readScreen would return, so do NOT call readScreen after it. If the request also asks to filter on a column ("IV above 40", "open interest over 500"), pass it as `filter` in this same call rather than describing what such a filter would do.',
+    'Set any screener setting — ticker, capital, expiry window, delta, strike range, strategy — and get the resulting screen back. Set everything a request asks for in ONE call; a second call is another round trip that can exhaust the rate limit. Pass null for every field not mentioned; those are left alone. Months are whole numbers 0-24 ("within 3 months" is 0-3). Delta 0.3 and 30 both mean a 30 delta. Use minStrike/maxStrike to bound the strike, not addCustomFilter — or minStrikePctOfSpot/maxStrikePctOfSpot to express it relative to the current price (115 means 15% above), which needs no knowledge of that price. Its result already contains everything readScreen would return, so do NOT call readScreen after it. If the request also asks to filter on a column ("IV above 40", "open interest over 500"), pass filterField/filterOp/filterValue in this same call rather than describing what such a filter would do.',
 
   showOptionCard:
     'Show ONE contract as a card. REQUIRED whenever your answer names a specific contract — the best, the cheapest, the one you are explaining. Take the expiration and strike exactly as the screen gave them. The card carries every figure, so do NOT also list them in prose: say only why this one.',

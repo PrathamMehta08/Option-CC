@@ -128,8 +128,19 @@ export function describeToolCall(
       if (args.strategy != null) {
         parts.push(args.strategy === 'covered-call' ? 'covered calls' : 'cash-secured puts');
       }
-      const filter = args.filter as { name?: unknown } | null | undefined;
-      if (filter?.name != null) parts.push(`filter ${String(filter.name)}`);
+      if (args.filterField != null) {
+        const symbols: Record<string, string> = {
+          gt: '>',
+          gte: '>=',
+          lt: '<',
+          lte: '<=',
+          eq: '=',
+          between: 'between',
+        };
+        const op = String(args.filterOp ?? 'gt');
+        const high = args.filterValueHigh != null ? `-${args.filterValueHigh}` : '';
+        parts.push(`filter ${args.filterField} ${symbols[op] ?? op} ${args.filterValue}${high}`);
+      }
       return { tone: 'done', text: parts.length ? `Set ${parts.join(', ')}` : 'No settings changed' };
     }
     case 'setTicker':
