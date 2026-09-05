@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
 import { buildColumns } from './ResultsTable';
 import { compileFormula, type ComputedColumn } from '@/lib/formula';
 import type { ScreenedOption } from '@/lib/optionChain';
@@ -122,14 +121,72 @@ describe('the new assignment columns format for readers, not for maths', () => {
 });
 
 describe('the table body stays aligned with the header', () => {
-  // The desktop body cells are written out by hand rather than mapped from the
-  // column list, so a new header with no matching <td> silently shifts every
-  // column after it. This is the guard for that.
-  it('has one hardcoded cell per fixed column', () => {
-    const src = readFileSync(new URL('./ResultsTable.tsx', import.meta.url), 'utf8');
-    const body = src.slice(src.indexOf('<tbody'), src.indexOf('</tbody>'));
-    // The computed columns are mapped, so exclude their keyed cell.
-    const hardcoded = (body.match(/<td(?! key=)[ \n>]/g) ?? []).length;
-    expect(hardcoded).toBe(buildColumns('Capital', []).length);
+  // The body used to be sixteen hand-written <td>s parallel to the header list,
+  // and twice a new column shifted every cell after it. The cells are mapped
+  // from this list now, so the alignment is structural rather than maintained —
+  // what is left to check is that the list itself is coherent.
+  it('gives every column something to render with', () => {
+    for (const col of buildColumns('Capital', [], 'all')) {
+      expect(typeof col.format(row())).toBe('string');
+      expect(col.key).toBeTruthy();
+      expect(col.label).toBeTruthy();
+    }
+  });
+
+  it('has no duplicate keys, which React would render as one cell', () => {
+    const keys = buildColumns('Capital', [], 'all').map((c) => c.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+describe('column density', () => {
+  // Sixteen columns come to about 1550px, which never fits beside the sidebar,
+  // so the table always scrolled sideways. The compact set is the default.
+  it('shows fewer columns than the full set', () => {
+    const all = buildColumns('Capital', [], 'all');
+    const essential = buildColumns('Capital', [], 'essential');
+    expect(essential.length).toBeLessThan(all.length);
+    expect(essential.length).toBeGreaterThan(0);
+  });
+
+  it('keeps the columns a decision actually turns on', () => {
+    const keys = buildColumns('Capital', [], 'essential').map((c) => c.key);
+    // Identity, cost, and the two figures the screen is ranked on.
+    expect(keys).toContain('expiration');
+    expect(keys).toContain('strike');
+    expect(keys).toContain('lastPrice');
+    expect(keys).toContain('annualizedReturn');
+    expect(keys).toContain('annualizedReturnWithGain');
+  });
+
+  it('keeps the compact set a subset, in the same order', () => {
+    const all = buildColumns('Capital', [], 'all').map((c) => c.key);
+    const essential = buildColumns('Capital', [], 'essential').map((c) => c.key);
+    expect(all.filter((k) => essential.includes(k))).toEqual(essential);
+  });
+
+  it('never drops a computed column, which the user asked for by name', () => {
+    const c = columnFor('oi * 2');
+    for (const density of ['essential', 'all'] as const) {
+      const keys = buildColumns('Capital', [c], density).map((k) => k.key);
+      expect(keys).toContain(c.id);
+    }
+  });
+
+  it('defaults to the full set, so a caller that does not care loses nothing', () => {
+    // Compared by key: every column carries fresh closures, so the objects
+    // themselves are never equal across two calls.
+    expect(buildColumns('Capital', []).map((c) => c.key)).toEqual(
+      buildColumns('Capital', [], 'all').map((c) => c.key)
+    );
+  });
+
+  it('shortens the date only when asked, for the pinned phone column', () => {
+    const long = buildColumns('Capital', [], 'all', false)[0];
+    const short = buildColumns('Capital', [], 'all', true)[0];
+    expect(long.format(row({ expiration: '2026-09-11' }))).toBe('2026-09-11');
+    expect(short.format(row({ expiration: '2026-09-11' }))).toBe('Sep 11');
+    // The sortable value stays the full date either way — 'Sep 11' does not sort.
+    expect(short.value(row({ expiration: '2026-09-11' }))).toBe('2026-09-11');
   });
 });

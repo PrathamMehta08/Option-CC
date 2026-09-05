@@ -17,6 +17,33 @@ type OptionData = ScreenedOption;
  */
 export type MobileView = 'table' | 'cards';
 
+/**
+ * How many columns the table shows.
+ *
+ * All sixteen come to about 1550px, which no sensible window fits beside the
+ * sidebar — so the table always scrolled sideways, and reading a row meant
+ * dragging a scrollbar to reach the number you wanted. 'essential' is the set
+ * that fits: identity, the two figures the screen is actually ranked on, and
+ * what it costs. Everything is one click away, and nothing is thrown out.
+ */
+export type ColumnDensity = 'essential' | 'all';
+
+/**
+ * The compact set, in table order. Chosen to answer "which contract, when, for
+ * how much, at what return" without reaching for a scrollbar.
+ */
+const ESSENTIAL_KEYS: ReadonlySet<string> = new Set([
+  'expiration',
+  'daysToExpiration',
+  'strike',
+  'lastPrice',
+  'delta',
+  'iv',
+  'maxContracts',
+  'annualizedReturn',
+  'annualizedReturnWithGain',
+]);
+
 /** How many cards the mobile list reveals at a time. */
 const MOBILE_PAGE_SIZE = 25;
 
@@ -31,35 +58,109 @@ export interface Column {
   value: (opt: OptionData) => number | string;
   /** How the value reads in the table cell and the mobile card. */
   format: (opt: OptionData) => string;
+  /**
+   * Classes for the cell. A function when the styling depends on the value —
+   * an assignment return can be a loss, and should not read as a gain.
+   */
+  cellClass?: string | ((opt: OptionData) => string);
+  /** Right-aligned, for the figures the screen is ranked on. */
+  alignRight?: boolean;
   /** Set when the column came from a user formula, so it can be removed. */
   computed?: ComputedColumn;
 }
+
+/** Above a 0.35 delta the assignment risk is worth noticing. */
+const deltaTone = (delta: number) => (Math.abs(delta) > 0.35 ? 'text-warn' : 'text-fg-soft');
+
+/** Losses read as losses. */
+const signedTone = (v: number) => (v < 0 ? 'text-warn' : 'text-a1');
 
 /**
  * One column definition drives both layouts: the dense table on desktop and the
  * card list on mobile. Adding a column here adds it to both.
  */
-export function buildColumns(capitalColumnLabel: string, computed: ComputedColumn[]): Column[] {
+export function buildColumns(
+  capitalColumnLabel: string,
+  computed: ComputedColumn[],
+  density: ColumnDensity = 'all',
+  /** Phones get "Sep 11" rather than "2026-09-11"; the column is pinned there. */
+  shortDates = false
+): Column[] {
   const dashIfUnaffordable = (opt: OptionData, value: () => string) =>
     opt.maxContracts > 0 ? value() : '—';
 
-  return [
-    { label: 'Expiry', key: 'expiration', value: (o) => o.expiration, format: (o) => o.expiration },
-    { label: 'DTE', key: 'daysToExpiration', value: (o) => o.daysToExpiration, format: (o) => `${o.daysToExpiration}d` },
-    { label: 'Strike', key: 'strike', value: (o) => o.strike, format: (o) => `$${o.strike.toFixed(2)}` },
-    { label: 'Premium', key: 'lastPrice', value: (o) => o.lastPrice, format: (o) => `$${o.lastPrice.toFixed(2)}` },
-    { label: 'Delta', key: 'delta', value: (o) => o.delta, format: (o) => o.delta.toFixed(3) },
-    { label: 'IV', key: 'iv', value: (o) => o.iv, format: (o) => `${o.iv.toFixed(1)}%` },
-    { label: 'Moneyness', key: 'moneyness', value: (o) => o.moneyness, format: (o) => `${o.moneyness.toFixed(1)}%` },
-    { label: 'OI', key: 'openInterest', value: (o) => o.openInterest, format: (o) => o.openInterest.toLocaleString() },
-    { label: 'Vol', key: 'volume', value: (o) => o.volume, format: (o) => o.volume.toLocaleString() },
+  const fixed: Column[] = [
+    {
+      label: 'Expiry',
+      key: 'expiration',
+      value: (o) => o.expiration,
+      format: (o) => (shortDates ? formatExpirationLabel(o.expiration) : o.expiration),
+      cellClass: 'text-fg-soft font-medium',
+    },
+    {
+      label: 'DTE',
+      key: 'daysToExpiration',
+      value: (o) => o.daysToExpiration,
+      format: (o) => `${o.daysToExpiration}d`,
+      cellClass: 'text-fg-soft font-mono',
+    },
+    {
+      label: 'Strike',
+      key: 'strike',
+      value: (o) => o.strike,
+      format: (o) => `$${o.strike.toFixed(2)}`,
+      cellClass: 'font-bold text-fg tracking-tight',
+    },
+    {
+      label: 'Premium',
+      key: 'lastPrice',
+      value: (o) => o.lastPrice,
+      format: (o) => `$${o.lastPrice.toFixed(2)}`,
+      cellClass: 'text-fg-soft font-mono',
+    },
+    {
+      label: 'Delta',
+      key: 'delta',
+      value: (o) => o.delta,
+      format: (o) => o.delta.toFixed(3),
+      cellClass: (o) => cn('font-mono', deltaTone(o.delta)),
+    },
+    { label: 'IV', key: 'iv', value: (o) => o.iv, format: (o) => `${o.iv.toFixed(1)}%`, cellClass: 'text-dim font-mono' },
+    {
+      label: 'Moneyness',
+      key: 'moneyness',
+      value: (o) => o.moneyness,
+      format: (o) => `${o.moneyness.toFixed(1)}%`,
+      cellClass: 'text-dim font-mono',
+    },
+    {
+      label: 'OI',
+      key: 'openInterest',
+      value: (o) => o.openInterest,
+      format: (o) => o.openInterest.toLocaleString(),
+      cellClass: 'text-faint font-mono',
+    },
+    {
+      label: 'Vol',
+      key: 'volume',
+      value: (o) => o.volume,
+      format: (o) => o.volume.toLocaleString(),
+      cellClass: 'text-faint font-mono',
+    },
     // A dash beats a $0 the user has to decode.
-    { label: 'Contracts', key: 'maxContracts', value: (o) => o.maxContracts, format: (o) => (o.maxContracts || '—').toString() },
+    {
+      label: 'Contracts',
+      key: 'maxContracts',
+      value: (o) => o.maxContracts,
+      format: (o) => (o.maxContracts || '—').toString(),
+      cellClass: 'text-fg-soft font-mono',
+    },
     {
       label: capitalColumnLabel,
       key: 'totalCapitalRequired',
       value: (o) => o.totalCapitalRequired,
       format: (o) => dashIfUnaffordable(o, () => `$${o.totalCapitalRequired.toLocaleString()}`),
+      cellClass: 'text-dim font-mono',
     },
     {
       label: 'Total Prem',
@@ -70,18 +171,25 @@ export function buildColumns(capitalColumnLabel: string, computed: ComputedColum
           o,
           () => `$${o.totalPremiumReceived.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
         ),
+      cellClass: 'text-dim font-mono',
     },
     {
       label: 'Ann. Return',
       key: 'annualizedReturn',
       value: (o) => o.annualizedReturn,
       format: (o) => `${o.annualizedReturn.toFixed(2)}%`,
+      cellClass: 'text-a1 font-bold tabular-nums text-sm',
+      alignRight: true,
     },
     {
       label: 'Ann. If Assigned',
       key: 'annualizedReturnWithGain',
       value: (o) => o.annualizedReturnWithGain,
       format: (o) => `${o.annualizedReturnWithGain.toFixed(2)}%`,
+      // Assignment can be a loss on an ITM call, so this one is signed rather
+      // than always reading as a gain.
+      cellClass: (o) => cn('font-bold tabular-nums text-sm', signedTone(o.annualizedReturnWithGain)),
+      alignRight: true,
     },
     {
       label: 'Premium Share',
@@ -89,6 +197,7 @@ export function buildColumns(capitalColumnLabel: string, computed: ComputedColum
       value: (o) => o.premiumSharePct,
       format: (o) =>
         Number.isFinite(o.premiumSharePct) ? `${o.premiumSharePct.toFixed(1)}%` : '—',
+      cellClass: 'text-fg-soft font-mono',
     },
     {
       label: 'Total If Assigned',
@@ -103,9 +212,16 @@ export function buildColumns(capitalColumnLabel: string, computed: ComputedColum
               maximumFractionDigits: 2,
             })}`
         ),
+      cellClass: (o) => cn('font-mono tabular-nums', o.totalProfitIfAssigned < 0 ? 'text-warn' : 'text-fg-soft'),
+      alignRight: true,
     },
+  ];
+
+  return [
+    ...(density === 'essential' ? fixed.filter((c) => ESSENTIAL_KEYS.has(c.key)) : fixed),
     // User formulas become ordinary columns: sortable, and formatted like any
-    // other number. A row the formula cannot score shows a dash.
+    // other number. A row the formula cannot score shows a dash. They survive
+    // the compact set — a formula is asked for, not inherited.
     ...computed.map((c) => ({
       label: c.name,
       key: c.id,
@@ -114,6 +230,7 @@ export function buildColumns(capitalColumnLabel: string, computed: ComputedColum
         const v = c.evaluate(o);
         return Number.isFinite(v) ? formatComputed(v) : '—';
       },
+      cellClass: 'font-mono text-a1',
       computed: c,
     })),
   ];
@@ -148,7 +265,7 @@ const CARD_DETAIL_KEYS: (keyof OptionData)[] = [
 export const ResultsTable = memo(({
   options, title, count, externalSortConfig, onExternalSortChange, capitalColumnLabel,
   computedColumns = EMPTY_COMPUTED, onRemoveComputedColumn,
-  mobileView, onMobileViewChange
+  mobileView, onMobileViewChange, density, onDensityChange
 }: {
   options: OptionData[], title: string, count?: number,
   externalSortConfig?: SortConfig, onExternalSortChange?: (config: SortConfig) => void,
@@ -158,6 +275,9 @@ export const ResultsTable = memo(({
   /** Table or cards on a phone. Shared across tables, like the sort. */
   mobileView: MobileView,
   onMobileViewChange: (view: MobileView) => void,
+  /** How many columns to show. Shared across tables, like the sort. */
+  density: ColumnDensity,
+  onDensityChange: (density: ColumnDensity) => void,
 }) => {
   // A phone should not paint 400+ rows on first render. Reveal in pages; the
   // desktop table keeps showing everything inside its own scroll container.
@@ -169,8 +289,8 @@ export const ResultsTable = memo(({
   const sortConfig = externalSortConfig !== undefined ? externalSortConfig : localSortConfig;
 
   const columns = useMemo(
-    () => buildColumns(capitalColumnLabel, computedColumns),
-    [capitalColumnLabel, computedColumns]
+    () => buildColumns(capitalColumnLabel, computedColumns, density, isMobile),
+    [capitalColumnLabel, computedColumns, density, isMobile]
   );
   const byKey = useMemo(
     () => Object.fromEntries(columns.map((c) => [c.key, c])) as Record<string, Column>,
@@ -231,9 +351,6 @@ export const ResultsTable = memo(({
     return sortConfig.direction === 'asc' ? <ChevronUp size={10} className="ml-1 text-fg-soft" /> : <ChevronDown size={10} className="ml-1 text-fg-soft" />;
   };
 
-  const deltaTone = (delta: number) =>
-    Math.abs(delta) > 0.35 ? 'text-warn' : 'text-fg-soft';
-
   return (
     <div className="space-y-4 text-fg font-sans">
       <div
@@ -252,10 +369,46 @@ export const ResultsTable = memo(({
           )}
         </h3>
 
+        {/* One control on desktop; on a phone it joins the row below, and
+            only in the table view where columns mean anything. */}
+        {(!isMobile || mobileView === 'table') && (
+          <div className={cn('flex items-center gap-1.5', isMobile && 'order-2')}>
+            <div
+              className="flex items-center rounded-lg border border-line bg-bg-3 p-0.5"
+              role="group"
+              aria-label="Columns"
+            >
+              {([
+                { id: 'essential' as ColumnDensity, label: 'Key' },
+                { id: 'all' as ColumnDensity, label: 'All' },
+              ]).map(({ id, label }) => (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={density === id}
+                  aria-label={id === 'essential' ? 'Key columns' : 'All columns'}
+                  title={
+                    id === 'essential'
+                      ? 'The columns that fit without scrolling sideways'
+                      : 'Every column'
+                  }
+                  onClick={() => onDensityChange(id)}
+                  className={cn(
+                    'h-[30px] px-2.5 flex items-center justify-center rounded-md text-[11px] font-bold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60',
+                    density === id ? 'bg-a1/12 text-a1' : 'text-faint hover:text-fg-soft'
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Sorting on a phone: the table headers are off-screen behind a
             horizontal scroll, so mobile gets its own native control. */}
         {isMobile && (
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 order-3">
           <div className="flex items-center rounded-lg border border-line bg-bg-3 p-0.5" role="group" aria-label="Result layout">
             {([
               { id: 'table' as MobileView, Icon: Rows3, label: 'Table' },
@@ -397,7 +550,7 @@ export const ResultsTable = memo(({
           table, paged, so the horizontal scroll is not also 400 rows deep. */}
       {(!isMobile || mobileView === 'table') && (
       <div className={cn(
-        'overflow-x-auto rounded-lg border border-line bg-bg-2/60 overflow-y-auto scrollbar-thin',
+        'overflow-x-auto rounded-lg border border-line bg-bg-2/60 overflow-y-auto',
         isMobile ? 'max-h-[70vh] -mx-1' : 'max-h-[600px]'
       )}>
         <table
@@ -464,73 +617,22 @@ export const ResultsTable = memo(({
           <tbody className="divide-y divide-line-soft border-none">
             {(isMobile ? visibleOnMobile : processedOptions).map((opt, i) => (
               <tr key={i} className="group hover:bg-bg-3/30 transition-colors">
-                <td
-                  className={cn(
-                    'text-fg-soft font-medium',
-                    // Pinned, so it needs its own background to scroll under.
-                    isMobile && 'sticky left-0 z-10 bg-bg-2 border-r border-line'
-                  )}
-                >
-                  {isMobile ? formatExpirationLabel(opt.expiration) : opt.expiration}
-                </td>
-                <td >
-                   <span className="px-2 py-1 bg-bg-3 border border-line rounded text-fg-soft font-medium font-mono text-[11px]">
-                     {opt.daysToExpiration}d
-                   </span>
-                </td>
-                <td className="font-bold text-fg tracking-tight">${opt.strike.toFixed(2)}</td>
-                <td className="text-fg-soft font-mono">${opt.lastPrice.toFixed(2)}</td>
-                <td >
-                  <span className={cn('font-mono', deltaTone(opt.delta))}>
-                    {opt.delta.toFixed(3)}
-                  </span>
-                </td>
-                <td className="text-dim font-mono">{opt.iv.toFixed(1)}%</td>
-                <td className="text-dim font-mono">{opt.moneyness.toFixed(1)}%</td>
-                <td className="text-faint font-mono">{opt.openInterest.toLocaleString()}</td>
-                <td className="text-faint font-mono">{opt.volume.toLocaleString()}</td>
-                <td className="text-fg-soft font-mono">{opt.maxContracts || '—'}</td>
-                <td className="text-dim font-mono">
-                  {byKey.totalCapitalRequired.format(opt)}
-                </td>
-                <td className="text-dim font-mono">
-                  {byKey.totalPremiumReceived.format(opt)}
-                </td>
-                <td className="text-right">
-                  <span className="text-a1 font-bold tabular-nums text-sm">
-                    {opt.annualizedReturn.toFixed(2)}%
-                  </span>
-                </td>
-                <td className="text-right">
-                  {/* Assignment can be a loss on an ITM call, so this one is
-                      signed rather than always reading as a gain. */}
-                  <span
+                {/* Cells come from the same list as the headers, so a column
+                    that is hidden, added or reordered cannot leave the body one
+                    cell out of step with the head — which it twice did while
+                    these were written out by hand. */}
+                {columns.map((col, ci) => (
+                  <td
+                    key={col.key}
                     className={cn(
-                      'font-bold tabular-nums text-sm',
-                      opt.annualizedReturnWithGain < 0 ? 'text-warn' : 'text-a1'
+                      typeof col.cellClass === 'function' ? col.cellClass(opt) : col.cellClass,
+                      col.alignRight && 'text-right',
+                      // The pinned column needs an opaque background of its own
+                      // to let the rest of the row scroll under it.
+                      isMobile && ci === 0 && 'sticky left-0 z-10 bg-bg-2 border-r border-line'
                     )}
                   >
-                    {opt.annualizedReturnWithGain.toFixed(2)}%
-                  </span>
-                </td>
-                <td className="text-fg-soft font-mono">
-                  {byKey.premiumSharePct.format(opt)}
-                </td>
-                <td className="text-right">
-                  <span
-                    className={cn(
-                      'font-mono tabular-nums',
-                      opt.totalProfitIfAssigned < 0 ? 'text-warn' : 'text-fg-soft'
-                    )}
-                  >
-                    {byKey.totalProfitIfAssigned.format(opt)}
-                  </span>
-                </td>
-                {/* Computed columns follow the fixed ones, in the same order as
-                    the header, so a formula lands in its own cell. */}
-                {computedColumns.map((c) => (
-                  <td key={c.id} className="font-mono text-a1">
-                    {byKey[c.id] ? byKey[c.id].format(opt) : '—'}
+                    {col.format(opt)}
                   </td>
                 ))}
               </tr>

@@ -89,48 +89,68 @@ table,
   font-variant-numeric: tabular-nums;
 }
 
-/* Scrollbars */
-.scrollbar-none::-webkit-scrollbar {
-  display: none;
+/* Scrollbars -------------------------------------------------------------
+   One treatment for every scroll surface, on both axes.
+
+   The old rules set a width but no height, so every HORIZONTAL bar fell
+   through to the browser's own chrome — which is why the table's was the one
+   that looked out of place. They also drew the thumb's floating gap as a
+   2px border in the page background colour, which showed as a dark ring
+   wherever a scroller sat on a lighter panel. Painting the thumb into its
+   content box instead leaves that gap genuinely transparent, so it floats on
+   whatever it is over.
+
+   Firefox exposes none of these parts; it takes width and colour only, and is
+   given the same idea through the two standard properties — but only where the
+   pseudo-elements are unavailable. Chromium supports both, and setting either
+   standard property there makes it IGNORE every ::-webkit-scrollbar rule
+   below, which would quietly undo all of this. */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+  }
 }
 
-/* More visible scrollbar for side panels/containers */
-.scrollbar-thin::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-.scrollbar-thin::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.scrollbar-thin::-webkit-scrollbar-thumb {
-  background: var(--line);
-  border-radius: 20px;
-  border: 2px solid #08090c; /* Creates 'floating' effect */
-}
-
-.scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background: #2a2f3a;
-}
-
-/* Global scrollbar for the page */
 ::-webkit-scrollbar {
   width: 10px;
+  height: 10px;
 }
 
-::-webkit-scrollbar-track {
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
   background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--line-soft);
-  border-radius: 10px;
-  border: 2px solid #08090c;
+  background: var(--line);
+  border-radius: 999px;
+  /* Transparent border + content-box clip = a gap that shows the panel
+     underneath, rather than a ring of one hardcoded colour. */
+  border: 2px solid transparent;
+  background-clip: content-box;
+  transition: background-color 0.15s ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--line);
+  background: var(--dim);
+  background-clip: content-box;
+}
+
+/* Dragging is the one moment the bar is the thing you are looking at. */
+::-webkit-scrollbar-thumb:active {
+  background: var(--a1);
+  background-clip: content-box;
+}
+
+/* For surfaces that scroll but should never advertise it: the mobile filter
+   sheet and the keypad, where the content is the control. */
+.scrollbar-none {
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
 }
 
 .scrolling-touch {

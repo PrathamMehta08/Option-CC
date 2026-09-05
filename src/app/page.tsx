@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import LLMChatbot from '@/components/LLMChatbot';
 import { AnalysisChart } from '@/components/screener/AnalysisChart';
-import { ResultsTable, type MobileView } from '@/components/screener/ResultsTable';
+import { ResultsTable, type MobileView, type ColumnDensity } from '@/components/screener/ResultsTable';
 import { NumericField, QuickPicks } from '@/components/screener/NumericField';
 import { CustomKeypad } from '@/components/screener/CustomKeypad';
 import { StrikePresets } from '@/components/screener/StrikePresets';
@@ -93,6 +93,9 @@ export default function OptionAnalyzer() {
   // reason the sort is: two tables that disagree about their layout is a bug,
   // not a feature.
   const [mobileView, setMobileView] = useState<MobileView>('table');
+  // Sixteen columns never fit beside the sidebar, so the table always scrolled
+  // sideways. The compact set is the default and the full set is one click away.
+  const [density, setDensity] = useState<ColumnDensity>('essential');
 
   // Custom keypad state and handlers. The state has to come first: the handlers
   // close over its setter.
@@ -568,7 +571,7 @@ export default function OptionAnalyzer() {
       <main className="max-w-[1500px] mx-auto px-4 py-6 md:px-12 md:py-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 md:gap-14 items-start">
           {/* Static/Sticky Sidebar on Desktop */}
-          <aside className="hidden lg:block lg:col-span-3 lg:sticky lg:top-[104px] max-h-[calc(100vh-132px)] overflow-y-auto scrollbar-thin pb-10">
+          <aside className="hidden lg:block lg:col-span-3 lg:sticky lg:top-[104px] max-h-[calc(100vh-132px)] overflow-y-auto pb-10">
             <div className="rounded-lg border border-line bg-bg-2 divide-y divide-line-soft">
               {/* Ticker: the one thing everything else hangs off, so it leads and
                   is the only control given real size. */}
@@ -863,7 +866,7 @@ export default function OptionAnalyzer() {
                 </dl>
 
                 {/* Top Picks */}
-                <ResultsTable title={strategy.copy.tableTitle} options={filteredOptions.slice(0, 10)} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} capitalColumnLabel={strategy.copy.capitalColumnLabel} computedColumns={computedColumns} onRemoveComputedColumn={removeComputedColumn} mobileView={mobileView} onMobileViewChange={setMobileView} />
+                <ResultsTable title={strategy.copy.tableTitle} options={filteredOptions.slice(0, 10)} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} capitalColumnLabel={strategy.copy.capitalColumnLabel} computedColumns={computedColumns} onRemoveComputedColumn={removeComputedColumn} mobileView={mobileView} onMobileViewChange={setMobileView} density={density} onDensityChange={setDensity} />
 
                 {/* Charts */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6 text-fg font-sans">
@@ -872,7 +875,7 @@ export default function OptionAnalyzer() {
                 </div>
 
                 {/* Full Results */}
-                <ResultsTable title="Full Market Scan Results" options={filteredOptions} count={filteredOptions.length} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} capitalColumnLabel={strategy.copy.capitalColumnLabel} computedColumns={computedColumns} onRemoveComputedColumn={removeComputedColumn} mobileView={mobileView} onMobileViewChange={setMobileView} />
+                <ResultsTable title="Full Market Scan Results" options={filteredOptions} count={filteredOptions.length} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} capitalColumnLabel={strategy.copy.capitalColumnLabel} computedColumns={computedColumns} onRemoveComputedColumn={removeComputedColumn} mobileView={mobileView} onMobileViewChange={setMobileView} density={density} onDensityChange={setDensity} />
               </div>
             ) : loading ? (
               // A skeleton in the shape of the real results reads as progress,

@@ -201,7 +201,7 @@ export default function LLMChatbot({
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-2 space-y-1 scrollbar-thin">
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
               {STARTERS.map((group) => {
                 const open = openGroup === group.title;
                 return (
