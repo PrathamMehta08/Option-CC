@@ -209,8 +209,12 @@ export default function LLMChatbot({
           done.push(`strikes $${minStrike ?? 'any'}-$${maxStrike ?? 'any'}`);
         }
         if (a.strategy != null) {
-          setStrategy(String(a.strategy) as StrategyId);
-          done.push(String(a.strategy) === 'covered-call' ? 'covered calls' : 'cash-secured puts');
+          const wanted = String(a.strategy);
+          if (wanted !== 'covered-call' && wanted !== 'cash-secured-put') {
+            return `Unknown strategy "${wanted}". Use "covered-call" or "cash-secured-put".`;
+          }
+          setStrategy(wanted);
+          done.push(wanted === 'covered-call' ? 'covered calls' : 'cash-secured puts');
         }
         if (done.length === 0) return 'Nothing to change — no settings were given.';
         // Hand back the resulting screen rather than making the model ask

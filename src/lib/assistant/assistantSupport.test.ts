@@ -196,3 +196,36 @@ describe('surfacing what the provider actually said', () => {
     expect(msg).toContain('5s');
   });
 });
+
+describe('the last resort still says something', () => {
+  // "The assistant failed for an unknown reason" was a dead end: it told the
+  // user nothing and told the next debugger nothing either.
+  it('never falls back to "unknown reason"', () => {
+    const inputs: unknown[] = [
+      {}, null, undefined, 0, '', [],
+      { statusCode: 400 },
+      { name: 'AI_APICallError' },
+      Object.create(null),
+    ];
+    for (const input of inputs) {
+      expect(describeAssistantError(input)).not.toMatch(/unknown reason/i);
+    }
+  });
+
+  it('reports whatever identifying scrap it has', () => {
+    expect(describeAssistantError({ name: 'AI_APICallError', statusCode: 418 }))
+      .toContain('AI_APICallError');
+    expect(describeAssistantError({ statusCode: 418 })).toContain('HTTP 418');
+  });
+
+  it('points at the server log when it has nothing else', () => {
+    expect(describeAssistantError({})).toMatch(/server log/i);
+  });
+
+  it('survives a value that cannot be serialised', () => {
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    expect(() => describeAssistantError(cyclic)).not.toThrow();
+    expect(describeAssistantError(cyclic).length).toBeGreaterThan(0);
+  });
+});

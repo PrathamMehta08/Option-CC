@@ -89,9 +89,43 @@ export function describeAssistantError(error: unknown): string {
   if (detail && detail !== message) {
     return `${provider} rejected the request: ${detail}`;
   }
-  return message
-    ? `The assistant failed: ${message}`
-    : 'The assistant failed for an unknown reason.';
+  if (message) return `The assistant failed: ${message}`;
+
+  // Last resort. "for an unknown reason" was a dead end that told the user
+  // nothing and told me nothing either — the third time in this project that a
+  // swallowed detail cost a debugging cycle. Whatever identifying scrap exists
+  // goes out: the error's class, its status, or the value itself.
+  const name = typeof (e as { name?: unknown }).name === 'string' ? (e as { name: string }).name : '';
+  const scraps = [name, status ? `HTTP ${status}` : ''].filter(Boolean).join(', ');
+  if (scraps) return `The assistant failed (${scraps}). The server log has the full error.`;
+
+  const raw = typeof error === 'string' ? error : safeStringify(error);
+  return raw
+    ? `The assistant failed: ${trim(raw)}`
+    : 'The assistant failed, and the provider gave no reason at all. The server log has the full error.';
+}
+
+/** Stringify for a human, never throwing on a cycle or an exotic value. */
+function safeStringify(value: unknown): string {
+  if (value == null) return '';
+  try {
+    const json = JSON.stringify(value);
+    if (json && json !== '{}' && json !== '[]') return json;
+  } catch {
+    // Cyclic or exotic. Fall through.
+  }
+  let text: string;
+  try {
+    // String() is not safe either: a null-prototype object has no toString and
+    // throws here. An error path that throws is worse than the message it was
+    // trying to improve on.
+    text = String(value);
+  } catch {
+    return '';
+  }
+  // '[object Object]' is not information; treat it as nothing so the caller
+  // reaches the message that at least points somewhere useful.
+  return text === '[object Object]' ? '' : text;
 }
 
 /**

@@ -44,16 +44,24 @@ export const TOOL_PARAMETERS = {
     // property, so an .optional() field is rejected outright with "invalid
     // JSON schema for tool applySettings". null is how a field says "leave
     // this one alone".
+    // NOTHING here carries a min/max/enum alongside .nullable().
+    //
+    // zod-to-json-schema cannot express a CONSTRAINED nullable as a simple type
+    // union, so it emits `anyOf: [{type:number,minimum:0}, {type:null}]` — and
+    // this provider rejects anyOf in tool parameters, the same "anyOf
+    // disambiguation failed" that forced the filter schema flat earlier. An
+    // unconstrained nullable serialises as {"type":["number","null"]}, which it
+    // accepts. The bounds are enforced in the app instead, by withMonthsFrom,
+    // normalizeDelta and the strategy lookup, which have to be defensive about
+    // model output anyway.
     ticker: z.string().nullable().describe('Stock ticker, or null to leave it'),
     capital: z.number().nullable().describe('Capital in dollars, or null to leave it'),
-    minMonths: z.number().int().min(0).max(24).nullable().describe('Min months to expiry, or null'),
-    maxMonths: z.number().int().min(0).max(24).nullable().describe('Max months to expiry, or null'),
+    minMonths: z.number().nullable().describe('Min whole months to expiry, 0-24, or null'),
+    maxMonths: z.number().nullable().describe('Max whole months to expiry, 0-24, or null'),
     delta: z
       .number()
-      .min(0)
-      .max(100)
       .nullable()
-      .describe('Max delta. Above 1 is hundredths (30 = 0.30); 1 or less is used as given, so 1 means 1.00'),
+      .describe('Max delta 0-1. Above 1 is hundredths (30 = 0.30); 1 or less is used as given, so 1 means 1.00'),
     minStrike: z.number().nullable().describe('Min strike in dollars, or null'),
     maxStrike: z.number().nullable().describe('Max strike in dollars, or null'),
     // Percentages of spot, so "strikes from 115% of the current price" does not
@@ -68,9 +76,9 @@ export const TOOL_PARAMETERS = {
       .nullable()
       .describe('Max strike as a % of the current price, or null'),
     strategy: z
-      .enum(['covered-call', 'cash-secured-put'])
+      .string()
       .nullable()
-      .describe('Only when the user says which they want; otherwise null'),
+      .describe('"covered-call" or "cash-secured-put", only when the user says which they want; otherwise null'),
   }),
 
   readScreen: z.object({}),
