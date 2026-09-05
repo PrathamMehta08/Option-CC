@@ -55,20 +55,38 @@ npm run dev
 
 Then open http://localhost:3000.
 
-### GROQ_API_KEY
+### The assistant's model
 
-The app has an optional AI assistant that drives the filters by tool calling. It needs
-a free [Groq](https://console.groq.com/keys) API key:
+The app has an optional AI assistant that drives the filters by tool calling. It talks
+to any provider that speaks the OpenAI wire format, which is all of the common ones:
 
 ```bash
 cp .env.example .env.local
 ```
 
-then put your key in `.env.local`:
+then set as much as you need in `.env.local`:
 
 ```
-GROQ_API_KEY=gsk_your_key_here
+LLM_API_KEY=your_key_here
+# LLM_BASE_URL=https://api.groq.com/openai/v1   # the default
+# LLM_MODEL=openai/gpt-oss-120b                 # the default
 ```
+
+Switching provider is those three variables, not a code change. `.env.example` lists
+the endpoints and model ids for Groq, Google Gemini, Cerebras, OpenRouter, Mistral and
+DeepSeek, and for a model running on your own machine through Ollama or LM Studio.
+
+Two things the assistant needs from whatever you point it at:
+
+- **Tool calling.** Without it the model can talk but cannot drive the app.
+- **Room in the rate limit.** One multi-step turn costs roughly 7,000 tokens, because
+  every step re-sends the system prompt and the tool schemas. A cap of 8,000 tokens a
+  minute — Groq's free tier — therefore fits about one turn a minute, and the assistant
+  will tell you so rather than failing silently.
+
+Nothing hosted is unlimited: free tiers are rate-limited, credit-limited, or both. A
+local model through Ollama is the only genuinely uncapped option, paid for in hardware
+and speed instead, and a small local model is noticeably worse at tool calling.
 
 **The key is optional.** Without it the screener, filters, sorting and charts all work
 normally; the assistant returns a clear message saying it is unavailable rather than
@@ -81,9 +99,9 @@ convenience on top of it.
 npm test
 ```
 
-115 tests covering the pure logic — the Black-Scholes helpers, the return and
-annualization math, the filter evaluator and both strategy modules. For a coverage
-report:
+247 tests covering the pure logic — the Black-Scholes helpers, the return and
+annualization math, the filter evaluator, both strategy modules, and the assistant's
+coercions, error messages and screen summary. For a coverage report:
 
 ```bash
 npm run test:coverage
@@ -115,7 +133,7 @@ call is validated against the real Zod schema, and the report separates
 schema rejection is a pass and everywhere else it is a failure. Full runs are
 written to `evals/results/<timestamp>.json` so two runs can be compared.
 
-It needs `GROQ_API_KEY`, calls no market-data API, and is paced to Groq's free
+It needs `LLM_API_KEY`, calls no market-data API, and is paced to the free
 tier of 8,000 tokens per minute — every call carries the whole tool schema, so
 that budget, not latency, sets the pace. Raise it with `--tpm` on a paid tier.
 
@@ -235,4 +253,4 @@ evals/
 ## Stack
 
 Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Vercel AI SDK v4
-against Groq · zod · yahoo-finance2 · Recharts · Vitest
+against any OpenAI-compatible model · zod · yahoo-finance2 · Recharts · Vitest

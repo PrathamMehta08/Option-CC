@@ -1,3 +1,5 @@
+import { providerName } from './model';
+
 /**
  * Turning a provider failure into something the user can act on.
  *
@@ -49,32 +51,34 @@ export function describeAssistantError(error: unknown): string {
   const message = typeof e.message === 'string' ? e.message : '';
   const combined = `${message} ${typeof e.responseBody === 'string' ? e.responseBody : ''}`;
 
+  const provider = providerName();
+
   if (status === 429 || /rate.?limit|too many requests/i.test(combined)) {
     const wait = retryAfterSeconds(e);
     // The daily cap and the per-minute cap need different advice: one is a
     // pause, the other is the end of the day.
     if (/tokens per day|TPD|daily/i.test(combined)) {
-      return 'The assistant has used up its daily Groq token allowance. The screener and every filter still work — the assistant will come back when the quota resets.';
+      return `The assistant has used up its daily ${provider} allowance. The screener and every filter still work — the assistant will come back when the quota resets. A provider with more room, or a local model, is a change to LLM_BASE_URL.`;
     }
     return wait
-      ? `Groq's rate limit was hit — this asks for about 8,000 tokens a minute and a full request uses most of that. Try again in ${wait}s.`
-      : "Groq's rate limit was hit. Give it a few seconds and try again.";
+      ? `${provider}'s rate limit was hit — a full request here is about 7,000 tokens and free tiers are often capped at 8,000 a minute. Try again in ${wait}s, or point LLM_BASE_URL somewhere with more room.`
+      : `${provider}'s rate limit was hit. Give it a few seconds and try again.`;
   }
 
   if (status === 401 || status === 403 || /invalid.?api.?key|unauthorized/i.test(combined)) {
-    return 'Groq rejected the API key. Check GROQ_API_KEY. The screener works without it.';
+    return `${provider} rejected the API key. Check LLM_API_KEY. The screener works without it.`;
   }
 
   if (status === 404 || /model_not_found|does not exist|decommissioned/i.test(combined)) {
-    return 'The configured Groq model is unavailable — it may have been retired. See src/lib/assistant/model.ts.';
+    return `${provider} does not have the configured model — it may have been retired. Check LLM_MODEL.`;
   }
 
   if (status && status >= 500) {
-    return 'Groq had a server error. This is on their end; try again in a moment.';
+    return `${provider} had a server error. This is on their end; try again in a moment.`;
   }
 
-  if (/abort|timeout|ETIMEDOUT|fetch failed/i.test(combined)) {
-    return 'The request to Groq timed out. Try again.';
+  if (/abort|timeout|ETIMEDOUT|fetch failed|ECONNREFUSED/i.test(combined)) {
+    return `Could not reach ${provider}. If it is a local model server, check it is running at LLM_BASE_URL.`;
   }
 
   return message

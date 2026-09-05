@@ -1,5 +1,5 @@
 import { streamText } from 'ai';
-import { createGroq, GROQ_MODEL } from '@/lib/assistant/model';
+import { createLlm, LLM_MODEL, isAssistantConfigured } from '@/lib/assistant/model';
 import { SYSTEM_PROMPT } from '@/lib/assistant/prompt';
 import { assistantTools } from '@/lib/assistant/tools';
 import { describeAssistantError } from '@/lib/assistant/errors';
@@ -14,11 +14,11 @@ export const maxDuration = 30;
 export async function POST(req: Request) {
   // The screener is the product; the assistant is an enhancement. Without a key
   // we say so plainly instead of failing with an opaque provider error.
-  if (!process.env.GROQ_API_KEY) {
+  if (!isAssistantConfigured()) {
     return new Response(
       JSON.stringify({
         error:
-          'The AI assistant is unavailable because GROQ_API_KEY is not set. The screener and all filters work without it.',
+          'The AI assistant is unavailable because no model is configured. Set LLM_API_KEY (or point LLM_BASE_URL at a local model server, which needs no key). The screener and all filters work without it.',
       }),
       { status: 503, headers: { 'Content-Type': 'application/json' } }
     );
@@ -28,14 +28,14 @@ export async function POST(req: Request) {
     const { messages } = await req.json();
 
     const result = streamText({
-      model: createGroq()(GROQ_MODEL),
+      model: createLlm()(LLM_MODEL),
       system: SYSTEM_PROMPT,
       messages,
       tools: assistantTools,
-      // Groq's free tier is 8,000 tokens per minute and a single multi-step
-      // turn can spend most of it, so a 429 mid-turn is routine rather than
-      // exceptional. The SDK's backoff turns most of those into a pause instead
-      // of a dead turn; the ones it cannot are reported honestly below.
+      // A free tier can be as tight as 8,000 tokens a minute, and a single
+      // multi-step turn here spends most of that, so a 429 mid-turn is routine
+      // rather than exceptional. The SDK's backoff turns most of those into a
+      // pause instead of a dead turn; the ones it cannot are reported below.
       maxRetries: 3,
       onError: (error) => {
         console.error('[chat/route] streamText error:', describeAssistantError(error), error);

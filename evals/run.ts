@@ -14,7 +14,7 @@ import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generateText, type CoreMessage } from 'ai';
-import { createGroq, GROQ_MODEL } from '@/lib/assistant/model';
+import { createLlm, LLM_MODEL, isAssistantConfigured } from '@/lib/assistant/model';
 import { SYSTEM_PROMPT } from '@/lib/assistant/prompt';
 import { assistantTools } from '@/lib/assistant/tools';
 import { grade, validateCall, describeExpectation, describeActual } from './grade';
@@ -237,14 +237,14 @@ function retryDelayMs(err: unknown, attempt: number): number {
 
 /** One model call, paced by the token budget, with retry as a safety net. */
 async function callModel(messages: CoreMessage[], budget: TokenBudget) {
-  const groq = createGroq();
+  const llm = createLlm();
   let lastError: unknown;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const reservation = await budget.reserve();
     try {
       const result = await generateText({
-        model: groq(GROQ_MODEL),
+        model: llm(LLM_MODEL),
         system: SYSTEM_PROMPT,
         messages,
         tools: assistantTools,
@@ -431,12 +431,12 @@ async function main() {
   loadEnvLocal();
   const args = parseArgs(process.argv.slice(2));
 
-  if (!process.env.GROQ_API_KEY) {
+  if (!isAssistantConfigured()) {
     console.error(
-      `\n${RED}GROQ_API_KEY is not set.${RESET}\n\n` +
+      `\n${RED}No model is configured.${RESET}\n\n` +
         `The eval harness calls the model directly, so it needs a key.\n` +
         `Put one in .env.local (see .env.example) or export it:\n\n` +
-        `  export GROQ_API_KEY=gsk_...\n`
+        `  export LLM_API_KEY=...\n`
     );
     process.exit(2);
   }
@@ -478,7 +478,7 @@ async function main() {
   const startedAt = new Date().toISOString();
   console.log(
     `\nRunning ${BOLD}${cases.length}${RESET} case${cases.length === 1 ? '' : 's'} ` +
-      `against ${BOLD}${GROQ_MODEL}${RESET} (concurrency ${concurrency}, temperature 0)\n` +
+      `against ${BOLD}${LLM_MODEL}${RESET} (concurrency ${concurrency}, temperature 0)\n` +
       `${DIM}~${estimatedTokens.toLocaleString()} tokens at ~${budget.perRequestEstimate} a call, ` +
       `paced to ${tpm.toLocaleString()}/min — roughly ${estimatedMinutes} min.${RESET}\n`
   );
@@ -543,7 +543,7 @@ async function main() {
   const report: RunReport = {
     startedAt,
     finishedAt: new Date().toISOString(),
-    model: GROQ_MODEL,
+    model: LLM_MODEL,
     systemPromptHash: createHash('sha256').update(SYSTEM_PROMPT).digest('hex').slice(0, 12),
     toolsHash: createHash('sha256')
       .update(JSON.stringify(Object.entries(assistantTools).map(([n, t]) => [n, t.description])))

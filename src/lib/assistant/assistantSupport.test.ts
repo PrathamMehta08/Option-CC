@@ -73,7 +73,7 @@ describe('explaining a provider failure', () => {
 
   it('points at the key when the key is the problem', () => {
     expect(describeAssistantError({ statusCode: 401, message: 'Invalid API Key' })).toMatch(
-      /GROQ_API_KEY/
+      /LLM_API_KEY/
     );
   });
 
