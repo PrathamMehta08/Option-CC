@@ -135,7 +135,7 @@ describe('describeScreen', () => {
 
   it('quotes the top rows with the figures needed to compare them', () => {
     const text = describeScreen(state());
-    expect(text).toContain('Top rows in the current order:');
+    expect(text).toMatch(/best rows of all .*the first IS the top one/);
     expect(text).toContain('2026-10-16 (45d) $330 strike');
     expect(text).toContain('premium $2.50');
     expect(text).toContain('annualized 6.24%');

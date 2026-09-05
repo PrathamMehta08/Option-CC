@@ -48,9 +48,25 @@ export const TOOL_PARAMETERS = {
     capital: z.number().nullable().describe('Capital in dollars, or null to leave it'),
     minMonths: z.number().int().min(0).max(24).nullable().describe('Min months to expiry, or null'),
     maxMonths: z.number().int().min(0).max(24).nullable().describe('Max months to expiry, or null'),
-    delta: z.number().min(0).max(100).nullable().describe('Max delta (0.3 and 30 both mean a 30 delta), or null'),
+    delta: z
+      .number()
+      .min(0)
+      .max(100)
+      .nullable()
+      .describe('Max delta. Above 1 is hundredths (30 = 0.30); 1 or less is used as given, so 1 means 1.00'),
     minStrike: z.number().nullable().describe('Min strike in dollars, or null'),
     maxStrike: z.number().nullable().describe('Max strike in dollars, or null'),
+    // Percentages of spot, so "strikes from 115% of the current price" does not
+    // require knowing the price first. The model was stopping to ask for it,
+    // which is a whole round trip to learn something the app already knows.
+    minStrikePctOfSpot: z
+      .number()
+      .nullable()
+      .describe('Min strike as a % of the current price (115 = 15% above), or null'),
+    maxStrikePctOfSpot: z
+      .number()
+      .nullable()
+      .describe('Max strike as a % of the current price, or null'),
     strategy: z
       .enum(['covered-call', 'cash-secured-put'])
       .nullable()
@@ -132,10 +148,10 @@ const DESCRIPTIONS: Record<ToolName, string> = {
     'Filter on numeric columns, for conditions the dedicated tools do not cover ("IV above 50", "open interest over 500"). Conditions are data, not code. Only the listed columns and operators exist; if the user asks for one outside them, do not call this tool.',
 
   applySettings:
-    'Set any screener setting — ticker, capital, expiry window, delta, strike range, strategy — and get the resulting screen back. Set everything a request asks for in ONE call; a second call is another round trip that can exhaust the rate limit. Pass null for every field not mentioned; those are left alone. Months are whole numbers 0-24 ("within 3 months" is 0-3). Delta 0.3 and 30 both mean a 30 delta. Use minStrike/maxStrike to bound the strike, not addCustomFilter. Its result already contains everything readScreen would return, so do NOT call readScreen after it.',
+    'Set any screener setting — ticker, capital, expiry window, delta, strike range, strategy — and get the resulting screen back. Set everything a request asks for in ONE call; a second call is another round trip that can exhaust the rate limit. Pass null for every field not mentioned; those are left alone. Months are whole numbers 0-24 ("within 3 months" is 0-3). Delta 0.3 and 30 both mean a 30 delta. Use minStrike/maxStrike to bound the strike, not addCustomFilter — or minStrikePctOfSpot/maxStrikePctOfSpot to express it relative to the current price (115 means 15% above), which needs no knowledge of that price. Its result already contains everything readScreen would return, so do NOT call readScreen after it.',
 
   showOptionCard:
-    'Show ONE contract as a card in the conversation. Use it whenever you single a contract out — the best, the cheapest, the one you are explaining. Take the expiration and strike straight from readScreen. The card carries every figure, so do NOT also list them in prose: say only why this one.',
+    'Show ONE contract as a card. REQUIRED whenever your answer names a specific contract — the best, the cheapest, the one you are explaining. Take the expiration and strike exactly as the screen gave them. The card carries every figure, so do NOT also list them in prose: say only why this one.',
 
   setResultsView:
     'Lay results out as a table or as cards on a phone. Use cards when presenting one contract to read rather than many to compare.',

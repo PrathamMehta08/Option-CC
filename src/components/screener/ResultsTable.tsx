@@ -7,6 +7,7 @@ import { useIsMobile } from '@/lib/useMediaQuery';
 import type { ScreenedOption } from '@/lib/optionChain';
 import type { SortConfig, Column } from './types';
 import { OptionCard } from './OptionCard';
+import { sortOptions } from './sortOptions';
 import type { ComputedColumn } from '@/lib/formula';
 
 type OptionData = ScreenedOption;
@@ -245,26 +246,12 @@ export const ResultsTable = memo(({
     applySort({ key, direction });
   };
 
-  const processedOptions = useMemo(() => {
-    const sorted = [...options];
-
-    if (sortConfig.key && sortConfig.direction) {
-      const col = byKey[sortConfig.key];
-      const read = col ? col.value : () => 0;
-      sorted.sort((a, b) => {
-        const aVal = read(a);
-        const bVal = read(b);
-        // NaN (a formula that could not score a row) always sinks.
-        if (typeof aVal === 'number' && Number.isNaN(aVal)) return 1;
-        if (typeof bVal === 'number' && Number.isNaN(bVal)) return -1;
-        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
-        return 0;
-      });
-    }
-
-    return sorted;
-  }, [options, sortConfig, byKey]);
+  // Sorting again here is a no-op when the page has already ordered the rows,
+  // and still does the right thing for a table using its own local sort.
+  const processedOptions = useMemo(
+    () => sortOptions(options, sortConfig, byKey),
+    [options, sortConfig, byKey]
+  );
 
   // Collapse back to the first page whenever the list or its order changes.
   // Adjusting state during render is React's documented alternative to an

@@ -14,6 +14,7 @@ import {
 import LLMChatbot from '@/components/LLMChatbot';
 import { AnalysisChart } from '@/components/screener/AnalysisChart';
 import { ResultsTable, buildColumns, type MobileView } from '@/components/screener/ResultsTable';
+import { sortOptions } from '@/components/screener/sortOptions';
 import { NumericField, QuickPicks } from '@/components/screener/NumericField';
 import { CustomKeypad } from '@/components/screener/CustomKeypad';
 import { StrikePresets } from '@/components/screener/StrikePresets';
@@ -328,6 +329,20 @@ export default function OptionAnalyzer() {
     });
   }, [data, deferredStrikeFilter, deferredSelectedExps, customFilters]);
 
+  /**
+   * The rows in the order the user asked for.
+   *
+   * Sorted here rather than inside each table so that every consumer agrees.
+   * The assistant used to be handed the unsorted list while the table showed a
+   * sorted one, so "sort by X and give me the top one" named a contract from a
+   * different ranking — and the top-picks table took its ten from the default
+   * order before re-sorting only those ten, which is not the top ten.
+   */
+  const sortedOptions = useMemo(
+    () => sortOptions(filteredOptions, globalSortConfig, cardColumns),
+    [filteredOptions, globalSortConfig, cardColumns]
+  );
+
   /** Headline figures for the strip above the results. */
   const summaryStats = useMemo(() => {
     if (filteredOptions.length === 0) return [];
@@ -395,7 +410,7 @@ export default function OptionAnalyzer() {
     describeScreen({
       data,
       loading,
-      visible: filteredOptions,
+      visible: sortedOptions,
       companyName: chain?.companyName ?? null,
       strategyName: strategy.copy.name,
       resultsView: mobileView,
@@ -418,11 +433,13 @@ export default function OptionAnalyzer() {
    */
   const snapshotRef = useRef(snapshot);
   const scanStateRef = useRef({ loading, ready: hasResults, wanted: ticker });
-  const rowsRef = useRef(filteredOptions);
+  const rowsRef = useRef(sortedOptions);
+  const priceRef = useRef(chain?.currentPrice ?? 0);
   useEffect(() => {
     snapshotRef.current = snapshot;
     scanStateRef.current = { loading, ready: hasResults, wanted: ticker };
-    rowsRef.current = filteredOptions;
+    rowsRef.current = sortedOptions;
+    priceRef.current = chain?.currentPrice ?? 0;
   });
 
   /**
@@ -432,6 +449,9 @@ export default function OptionAnalyzer() {
    * split is the point — a model asked to present a contract otherwise retypes
    * its figures, and a retyped figure is one that can be wrong.
    */
+  /** The loaded spot price, for strikes the assistant gives as a % of it. */
+  const currentPrice = useCallback(() => priceRef.current, []);
+
   const findOption = useCallback((expiration: string, strike: number) => {
     // Strikes are quoted to two places, so compare with a tolerance rather than
     // for equality: 322.5 and 322.50 are the same contract.
@@ -929,7 +949,7 @@ export default function OptionAnalyzer() {
                 </dl>
 
                 {/* Top Picks */}
-                <ResultsTable title={strategy.copy.tableTitle} options={filteredOptions.slice(0, 10)} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} capitalColumnLabel={strategy.copy.capitalColumnLabel} computedColumns={computedColumns} onRemoveComputedColumn={removeComputedColumn} mobileView={mobileView} onMobileViewChange={setMobileView} />
+                <ResultsTable title={strategy.copy.tableTitle} options={sortedOptions.slice(0, 10)} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} capitalColumnLabel={strategy.copy.capitalColumnLabel} computedColumns={computedColumns} onRemoveComputedColumn={removeComputedColumn} mobileView={mobileView} onMobileViewChange={setMobileView} />
 
                 {/* Charts */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6 text-fg font-sans">
@@ -938,7 +958,7 @@ export default function OptionAnalyzer() {
                 </div>
 
                 {/* Full Results */}
-                <ResultsTable title="Full Market Scan Results" options={filteredOptions} count={filteredOptions.length} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} capitalColumnLabel={strategy.copy.capitalColumnLabel} computedColumns={computedColumns} onRemoveComputedColumn={removeComputedColumn} mobileView={mobileView} onMobileViewChange={setMobileView} />
+                <ResultsTable title="Full Market Scan Results" options={sortedOptions} count={filteredOptions.length} externalSortConfig={globalSortConfig} onExternalSortChange={setGlobalSortConfig} capitalColumnLabel={strategy.copy.capitalColumnLabel} computedColumns={computedColumns} onRemoveComputedColumn={removeComputedColumn} mobileView={mobileView} onMobileViewChange={setMobileView} />
               </div>
             ) : loading ? (
               // A skeleton in the shape of the real results reads as progress,
@@ -1074,6 +1094,7 @@ export default function OptionAnalyzer() {
         setStrategy={handleStrategyChange}
         setResultsView={setMobileView}
         findOption={findOption}
+        currentPrice={currentPrice}
         cardColumns={cardColumns}
         computedColumns={computedColumns}
         readScreen={readScreen}

@@ -40,6 +40,8 @@ interface LLMChatbotProps {
   setResultsView: (view: MobileView) => void;
   /** Resolves a contract the assistant named to the app's own row. */
   findOption: (expiration: string, strike: number) => ScreenedOption | null;
+  /** The loaded underlying's price, for strikes given as a % of it. */
+  currentPrice: () => number;
   /** Column formatting, so a card in the chat matches the table. */
   cardColumns: Record<string, Column>;
   computedColumns: ComputedColumn[];
@@ -105,6 +107,7 @@ export default function LLMChatbot({
   setStrategy,
   setResultsView,
   findOption,
+  currentPrice,
   cardColumns,
   computedColumns,
   readScreen,
@@ -186,14 +189,24 @@ export default function LLMChatbot({
           setDeltaMagnitude(magnitude);
           done.push(`delta ${magnitude}`);
         }
-        if (a.minStrike != null || a.maxStrike != null) {
+        // Percentages resolve against the price the app already holds, so a
+        // request like "from 115% of spot" costs no extra round trip.
+        const spot = currentPrice();
+        const fromPct = (pct: unknown) =>
+          pct != null && spot > 0 ? Number(((Number(pct) / 100) * spot).toFixed(2)) : null;
+        const minFromPct = fromPct(a.minStrikePctOfSpot);
+        const maxFromPct = fromPct(a.maxStrikePctOfSpot);
+        const minStrike = a.minStrike != null ? Number(a.minStrike) : minFromPct;
+        const maxStrike = a.maxStrike != null ? Number(a.maxStrike) : maxFromPct;
+
+        if (minStrike != null || maxStrike != null) {
           // Only one end may be given, so the other keeps whatever it has
           // rather than being reset to an arbitrary bound.
           setStrikeFilter(([low, high]) => [
-            a.minStrike != null ? Number(a.minStrike) : low,
-            a.maxStrike != null ? Number(a.maxStrike) : high,
+            minStrike ?? low,
+            maxStrike ?? high,
           ]);
-          done.push(`strikes $${a.minStrike ?? 'any'}-$${a.maxStrike ?? 'any'}`);
+          done.push(`strikes $${minStrike ?? 'any'}-$${maxStrike ?? 'any'}`);
         }
         if (a.strategy != null) {
           setStrategy(String(a.strategy) as StrategyId);

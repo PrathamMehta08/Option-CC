@@ -84,7 +84,12 @@ export function describeScreen(s: ScreenState): string {
   if (top.length === 0) {
     lines.push('No rows match the current filters.');
   } else {
-    lines.push('Top rows in the current order:');
+    // Said explicitly because the model was hedging about whether these were
+    // really the leaders — and for a while it was right to, since the list it
+    // got was ordered differently from the table. It is the same order now.
+    lines.push(
+      `The ${top.length} best rows of all ${s.visible.length}, in that exact order — the first IS the top one:`
+    );
     for (const o of top) {
       lines.push(
         `  ${o.expiration} (${o.daysToExpiration}d) $${o.strike} strike — ` +
