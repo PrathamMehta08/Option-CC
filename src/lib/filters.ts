@@ -165,3 +165,37 @@ export function parseCustomFilter(input: unknown): FilterParseResult {
 export function filterFields(filter: CustomFilter): string {
   return [...new Set(filter.conditions.map((c) => c.field))].sort().join(',');
 }
+
+/**
+ * One filter per column, out of a filter the model bundled.
+ *
+ * Asked for "premium share over 20, OI over 100, volume over 100" it wrote a
+ * single filter called Prem20_OI100_Vol100 with three ANDed conditions. That is
+ * correct and unusable: one chip, all or nothing, and no way to loosen the
+ * volume rule without restating the other two.
+ *
+ * Conditions on the SAME column stay together, because "iv > 30 and iv < 50" is
+ * one range and splitting it would leave two filters that the replace-by-column
+ * rule would then collapse into whichever landed last — silently dropping half
+ * the range. An `or` filter is never split: the conditions are alternatives,
+ * and separate filters are ANDed.
+ */
+export function splitFilter(
+  filter: CustomFilter,
+  label: (field: string) => string = (field) => field
+): CustomFilter[] {
+  if (filter.mode === 'or') return [filter];
+
+  const byField = new Map<string, FilterCondition[]>();
+  for (const condition of filter.conditions) {
+    byField.set(condition.field, [...(byField.get(condition.field) ?? []), condition]);
+  }
+  if (byField.size <= 1) return [filter];
+
+  return [...byField].map(([field, conditions]) => ({
+    id: `${filter.id}-${field}`,
+    name: label(field),
+    mode: 'and' as const,
+    conditions,
+  }));
+}

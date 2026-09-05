@@ -5,7 +5,7 @@ import { useChat } from '@ai-sdk/react';
 import type { Message, ToolInvocation } from 'ai';
 import { MessageSquare, X, Send, Bot, User, Loader2, AlertTriangle, Maximize2, Minimize2, Sparkles, ChevronDown, Expand, Shrink } from 'lucide-react';
 import { cn } from '@/lib/ui';
-import { parseCustomFilter, describeFilter, type CustomFilter } from '@/lib/filters';
+import { parseCustomFilter, describeFilter, splitFilter, type CustomFilter } from '@/lib/filters';
 import { normalizeDelta } from '@/lib/assistant/normalize';
 import { describeHistory, type ChartRange, type HistoryResponse } from '@/lib/history';
 import { StockChart } from '@/components/screener/StockChart';
@@ -420,11 +420,22 @@ export default function LLMChatbot({
         if (!parsed.ok) {
           return `Filter rejected: ${parsed.error}. Valid fields are the numeric columns; valid operators are gt, gte, lt, lte, eq, between.`;
         }
-        addCustomFilter(parsed.filter);
-        // Wait for it to reach the table: a readScreen straight afterwards was
-        // otherwise answered from the rows as they were before the filter.
-        await awaitScan(undefined, { newestFilter: parsed.filter.id });
-        return `Filter applied — ${describeFilter(parsed.filter)}`;
+        // One chip per column. The model bundles conditions into a single
+        // filter — Prem20_OI100_Vol100 — which is correct and unusable: all or
+        // nothing, with no way to loosen one rule without restating the rest.
+        const parts = splitFilter(
+          parsed.filter,
+          (field) => cardColumns[field]?.label ?? field
+        );
+        for (const part of parts) addCustomFilter(part);
+        // Wait for them to reach the table: a readScreen straight afterwards
+        // was otherwise answered from the rows as they were before.
+        await awaitScan(undefined, { newestFilter: parts[parts.length - 1].id });
+        return parts.length === 1
+          ? `Filter applied — ${describeFilter(parsed.filter)}`
+          : `Applied as ${parts.length} separate filters, each removable on its own — ${parts
+              .map(describeFilter)
+              .join('; ')}`;
       }
       case 'addComputedColumn': {
         // The formula is parsed by our own grammar, never executed. A rejection

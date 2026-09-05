@@ -233,3 +233,56 @@ describe('taking filters off', () => {
     expect(chip.text).toBe('Set iv filter removed, filter openInterest > 500');
   });
 });
+
+/**
+ * A bundled filter is split into one per column before it is applied, so the
+ * chip should say what actually landed rather than repeat the model's name for
+ * the bundle — "Filter added: Prem20_OI100_Vol100" described one chip where
+ * three were created.
+ */
+describe('a filter that covers several columns', () => {
+  const conditions = [
+    { field: 'premiumSharePct', op: 'gte', value: [20] },
+    { field: 'openInterest', op: 'gt', value: [100] },
+    { field: 'volume', op: 'gt', value: [100] },
+  ];
+
+  it('counts the columns rather than naming the bundle', () => {
+    const chip = describeToolCall('addCustomFilter', {
+      name: 'Prem20_OI100_Vol100',
+      mode: 'and',
+      conditions,
+    });
+    expect(chip.text).toBe('Filters added: premiumSharePct, openInterest, volume');
+  });
+
+  it('keeps the name for a single-column filter', () => {
+    const chip = describeToolCall('addCustomFilter', {
+      name: 'High IV',
+      mode: 'and',
+      conditions: [{ field: 'iv', op: 'gt', value: [40] }],
+    });
+    expect(chip.text).toBe('Filter added: High IV');
+  });
+
+  it('keeps the name for an or filter, which is never split', () => {
+    const chip = describeToolCall('addCustomFilter', {
+      name: 'Liquid either way',
+      mode: 'or',
+      conditions: [conditions[1], conditions[2]],
+    });
+    expect(chip.text).toBe('Filter added: Liquid either way');
+  });
+
+  it('counts a column named twice only once', () => {
+    const chip = describeToolCall('addCustomFilter', {
+      name: 'IV band',
+      mode: 'and',
+      conditions: [
+        { field: 'iv', op: 'gt', value: [30] },
+        { field: 'iv', op: 'lt', value: [50] },
+      ],
+    });
+    expect(chip.text).toBe('Filter added: IV band');
+  });
+});

@@ -7,6 +7,7 @@ import {
   describeFilter,
   describeCondition,
   filterFields,
+  splitFilter,
   FILTER_OPS,
   type CustomFilter,
   type FilterCondition,
@@ -318,5 +319,100 @@ describe('which filter replaces which', () => {
 
   it('collapses a column named twice, as a range does', () => {
     expect(filterFields(filter('a', ['iv', 'iv']))).toBe('iv');
+  });
+});
+
+describe('splitting a bundled filter into one per column', () => {
+  const bundled: CustomFilter = {
+    id: 'bundle',
+    name: 'Prem20_OI100_Vol100',
+    mode: 'and',
+    conditions: [
+      { field: 'premiumSharePct', op: 'gte', value: [20] },
+      { field: 'openInterest', op: 'gt', value: [100] },
+      { field: 'volume', op: 'gt', value: [100] },
+    ],
+  };
+
+  it('gives each column its own filter', () => {
+    // The reported bundle: one chip, all or nothing, no way to loosen the
+    // volume rule without restating the other two.
+    const parts = splitFilter(bundled);
+    expect(parts).toHaveLength(3);
+    expect(parts.map((f) => f.conditions[0].field)).toEqual([
+      'premiumSharePct',
+      'openInterest',
+      'volume',
+    ]);
+  });
+
+  it('gives them distinct ids, so they do not replace each other', () => {
+    const ids = splitFilter(bundled).map((f) => f.id);
+    expect(new Set(ids).size).toBe(3);
+  });
+
+  it('names each after its column', () => {
+    const parts = splitFilter(bundled, (field) => `Column ${field}`);
+    expect(parts.map((f) => f.name)).toEqual([
+      'Column premiumSharePct',
+      'Column openInterest',
+      'Column volume',
+    ]);
+  });
+
+  it('keeps a range on one column together', () => {
+    // Split, these two would be filters over the same column, and the
+    // replace-by-column rule would drop whichever landed first.
+    const range: CustomFilter = {
+      id: 'range',
+      name: 'IV band',
+      mode: 'and',
+      conditions: [
+        { field: 'iv', op: 'gt', value: [30] },
+        { field: 'iv', op: 'lt', value: [50] },
+      ],
+    };
+    expect(splitFilter(range)).toEqual([range]);
+  });
+
+  it('splits the columns but keeps each column whole', () => {
+    const mixed: CustomFilter = {
+      id: 'mixed',
+      name: 'Mixed',
+      mode: 'and',
+      conditions: [
+        { field: 'iv', op: 'gt', value: [30] },
+        { field: 'volume', op: 'gt', value: [100] },
+        { field: 'iv', op: 'lt', value: [50] },
+      ],
+    };
+    const parts = splitFilter(mixed);
+    expect(parts).toHaveLength(2);
+    expect(parts[0].conditions).toHaveLength(2);
+    expect(parts[1].conditions).toHaveLength(1);
+  });
+
+  it('never splits an or filter, which would change what it means', () => {
+    const either: CustomFilter = {
+      id: 'either',
+      name: 'Either',
+      mode: 'or',
+      conditions: [
+        { field: 'volume', op: 'gt', value: [500] },
+        { field: 'openInterest', op: 'gt', value: [500] },
+      ],
+    };
+    // Separate filters are ANDed, so splitting an "or" tightens it silently.
+    expect(splitFilter(either)).toEqual([either]);
+  });
+
+  it('leaves a single condition alone', () => {
+    const one: CustomFilter = {
+      id: 'one',
+      name: 'IV',
+      mode: 'and',
+      conditions: [{ field: 'iv', op: 'gt', value: [40] }],
+    };
+    expect(splitFilter(one)).toEqual([one]);
   });
 });

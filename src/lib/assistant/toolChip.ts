@@ -168,8 +168,22 @@ export function describeToolCall(
       };
     case 'setResultsView':
       return { tone: 'done', text: `Showing ${args.view}` };
-    case 'addCustomFilter':
+    case 'addCustomFilter': {
+      // A bundled filter is split into one per column, so the chip counts them
+      // rather than printing the model''s own name for the bundle.
+      const conditions = Array.isArray(args.conditions) ? args.conditions : [];
+      const fields = [
+        ...new Set(
+          conditions
+            .map((c) => (c as { field?: unknown }).field)
+            .filter((f): f is string => typeof f === 'string')
+        ),
+      ];
+      if (args.mode !== 'or' && fields.length > 1) {
+        return { tone: 'done', text: `Filters added: ${fields.join(', ')}` };
+      }
       return { tone: 'done', text: `Filter added${args.name ? `: ${args.name}` : ''}` };
+    }
     case 'addComputedColumn':
       return { tone: 'done', text: `Column added${args.name ? `: ${args.name}` : ''}` };
     case 'readScreen':
