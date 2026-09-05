@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import LLMChatbot from '@/components/LLMChatbot';
 import { AnalysisChart } from '@/components/screener/AnalysisChart';
-import { ResultsTable, type MobileView } from '@/components/screener/ResultsTable';
+import { ResultsTable, buildColumns, type MobileView } from '@/components/screener/ResultsTable';
 import { NumericField, QuickPicks } from '@/components/screener/NumericField';
 import { CustomKeypad } from '@/components/screener/CustomKeypad';
 import { StrikePresets } from '@/components/screener/StrikePresets';
@@ -240,6 +240,15 @@ export default function OptionAnalyzer() {
   };
 
 
+  /** The formatting the assistant's card uses, so it matches the table's. */
+  const cardColumns = useMemo(
+    () =>
+      Object.fromEntries(
+        buildColumns(strategy.copy.capitalColumnLabel, computedColumns).map((c) => [c.key, c])
+      ),
+    [strategy.copy.capitalColumnLabel, computedColumns]
+  );
+
   const allExpirations = useMemo(
     () =>
       data
@@ -409,10 +418,29 @@ export default function OptionAnalyzer() {
    */
   const snapshotRef = useRef(snapshot);
   const scanStateRef = useRef({ loading, ready: hasResults, wanted: ticker });
+  const rowsRef = useRef(filteredOptions);
   useEffect(() => {
     snapshotRef.current = snapshot;
     scanStateRef.current = { loading, ready: hasResults, wanted: ticker };
+    rowsRef.current = filteredOptions;
   });
+
+  /**
+   * Find one contract by expiration and strike.
+   *
+   * The assistant names which contract to show; the row comes from here. That
+   * split is the point — a model asked to present a contract otherwise retypes
+   * its figures, and a retyped figure is one that can be wrong.
+   */
+  const findOption = useCallback((expiration: string, strike: number) => {
+    // Strikes are quoted to two places, so compare with a tolerance rather than
+    // for equality: 322.5 and 322.50 are the same contract.
+    return (
+      rowsRef.current.find(
+        (o) => o.expiration === expiration && Math.abs(o.strike - strike) < 0.005
+      ) ?? null
+    );
+  }, []);
 
   /**
    * Read the screen, waiting for a scan that is on its way.
@@ -1045,6 +1073,9 @@ export default function OptionAnalyzer() {
         setSortConfig={setGlobalSortConfig}
         setStrategy={handleStrategyChange}
         setResultsView={setMobileView}
+        findOption={findOption}
+        cardColumns={cardColumns}
+        computedColumns={computedColumns}
         readScreen={readScreen}
       />
     </div>

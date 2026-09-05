@@ -23,35 +23,6 @@ export const SORT_DIRECTION = z.enum(['asc', 'desc']);
  * every emitted tool call through the exact schema the route enforces.
  */
 export const TOOL_PARAMETERS = {
-  setTicker: z.object({
-    ticker: z.string().describe('The stock ticker symbol'),
-  }),
-
-  setCapital: z.object({
-    capital: z.number().describe('The capital amount in dollars'),
-  }),
-
-  setMonthsRange: z.object({
-    // Whole months only. The model was emitting 0.8 to 1.2 for "about a month
-    // out"; the UI slider is integer months, so a fraction is unusable. An
-    // integer JSON schema makes the provider's constrained decoding enforce it.
-    minMonths: z.number().int().min(0).max(24).describe('Minimum months to expiration, a whole number'),
-    maxMonths: z.number().int().min(0).max(24).describe('Maximum months to expiration, a whole number'),
-  }),
-
-  setDelta: z.object({
-    // The bound is 100, not 1, because a trader saying "30 delta" means 0.30
-    // and a schema capped at 1 makes the provider's constrained decoding
-    // mangle it rather than pass it through to be read properly. The app
-    // normalises; see normalizeDelta.
-    delta: z.number().min(0).max(100).describe('Delta magnitude. 0.3 and 30 both mean a 30 delta'),
-  }),
-
-  setStrikeRange: z.object({
-    minStrike: z.number().describe('Minimum strike price'),
-    maxStrike: z.number().describe('Maximum strike price'),
-  }),
-
   setSort: z.object({
     key: SORT_KEY.describe('The column to sort by'),
     direction: SORT_DIRECTION.describe('Sort direction'),
@@ -88,10 +59,16 @@ export const TOOL_PARAMETERS = {
 
   readScreen: z.object({}),
 
-  setStrategy: z.object({
-    strategy: z
-      .enum(['covered-call', 'cash-secured-put'])
-      .describe('Which side of the chain to screen'),
+  /**
+   * Put one contract on screen as a card.
+   *
+   * The model names WHICH contract; the app renders it from its own row. That
+   * split matters: a model asked to present a contract otherwise retypes its
+   * figures into prose, and a retyped figure is one that can be wrong.
+   */
+  showOptionCard: z.object({
+    expiration: z.string().describe('The contract expiration, exactly as readScreen gave it'),
+    strike: z.number().describe('The strike price'),
   }),
 
   setResultsView: z.object({
@@ -142,19 +119,6 @@ export function isToolName(value: string): value is ToolName {
 
 /** Human-facing descriptions, kept beside the schemas they document. */
 const DESCRIPTIONS: Record<ToolName, string> = {
-  setTicker: 'Set the stock ticker to analyse (e.g. AAPL, TSLA).',
-
-  setCapital: 'Set the capital available to trade with, in dollars.',
-
-  setMonthsRange:
-    'Set the months-to-expiry window, whole months 0-24. "Within 3 months" is 0-3; "about a month out" is 0-2; LEAPS is 12-24. Never fractional.',
-
-  setDelta:
-    'Set the max delta. 0.3 and 30 both mean a 30 delta; the app normalises and applies the sign for the active strategy. Independent of the ticker — set it whenever a delta is named.',
-
-  setStrikeRange:
-    'Set the strike range in dollars. Use this for ANY request that bounds the strike ("between 100 and 200", "nothing above 250") in preference to addCustomFilter.',
-
   setSort:
     'Sort the table by a column. Superlatives are sorts: "cheapest" is lastPrice asc, "highest yield" is annualizedReturn desc.',
 
@@ -168,10 +132,10 @@ const DESCRIPTIONS: Record<ToolName, string> = {
     'Filter on numeric columns, for conditions the dedicated tools do not cover ("IV above 50", "open interest over 500"). Conditions are data, not code. Only the listed columns and operators exist; if the user asks for one outside them, do not call this tool.',
 
   applySettings:
-    'Set SEVERAL screener settings in one call. ALWAYS use this instead of the individual setters when a request changes more than one thing — every separate call is another round trip that re-sends this whole toolset and can exhaust the rate limit mid-answer. Pass null for every field the user did not mention; those are left alone.',
+    'Set any screener setting — ticker, capital, expiry window, delta, strike range, strategy. Set everything a request asks for in ONE call: you can only emit one call per reply, so a second is another round trip that re-sends this whole toolset and can exhaust the rate limit mid-answer. Pass null for every field the user did not mention; those are left alone. Months are whole numbers 0-24 ("within 3 months" is 0-3, LEAPS is 12-24). Delta 0.3 and 30 both mean a 30 delta. Use minStrike/maxStrike for any request that bounds the strike, in preference to addCustomFilter.',
 
-  setStrategy:
-    'Switch between covered calls and cash-secured puts. ONLY when the user says which they want — never to work around an affordability or empty-result problem.',
+  showOptionCard:
+    'Show ONE contract as a card in the conversation. Use it whenever you single a contract out — the best, the cheapest, the one you are explaining. Take the expiration and strike straight from readScreen. The card carries every figure, so do NOT also list them in prose: say only why this one.',
 
   setResultsView:
     'Lay results out as a table or as cards on a phone. Use cards when presenting one contract to read rather than many to compare.',
@@ -186,26 +150,15 @@ const DESCRIPTIONS: Record<ToolName, string> = {
  * chain, so the model emits the call and the UI performs it.
  */
 export const assistantTools = {
-  setTicker: tool({ description: DESCRIPTIONS.setTicker, parameters: TOOL_PARAMETERS.setTicker }),
-  setCapital: tool({ description: DESCRIPTIONS.setCapital, parameters: TOOL_PARAMETERS.setCapital }),
-  setMonthsRange: tool({
-    description: DESCRIPTIONS.setMonthsRange,
-    parameters: TOOL_PARAMETERS.setMonthsRange,
-  }),
-  setDelta: tool({ description: DESCRIPTIONS.setDelta, parameters: TOOL_PARAMETERS.setDelta }),
-  setStrikeRange: tool({
-    description: DESCRIPTIONS.setStrikeRange,
-    parameters: TOOL_PARAMETERS.setStrikeRange,
-  }),
   setSort: tool({ description: DESCRIPTIONS.setSort, parameters: TOOL_PARAMETERS.setSort }),
   applySettings: tool({
     description: DESCRIPTIONS.applySettings,
     parameters: TOOL_PARAMETERS.applySettings,
   }),
   readScreen: tool({ description: DESCRIPTIONS.readScreen, parameters: TOOL_PARAMETERS.readScreen }),
-  setStrategy: tool({
-    description: DESCRIPTIONS.setStrategy,
-    parameters: TOOL_PARAMETERS.setStrategy,
+  showOptionCard: tool({
+    description: DESCRIPTIONS.showOptionCard,
+    parameters: TOOL_PARAMETERS.showOptionCard,
   }),
   setResultsView: tool({
     description: DESCRIPTIONS.setResultsView,

@@ -9,6 +9,9 @@ import { parseCustomFilter, describeFilter, type CustomFilter } from '@/lib/filt
 import { normalizeDelta } from '@/lib/assistant/normalize';
 import { describeHistory, type ChartRange, type HistoryResponse } from '@/lib/history';
 import { StockChart } from '@/components/screener/StockChart';
+import { OptionCard } from '@/components/screener/OptionCard';
+import type { Column } from '@/components/screener/types';
+import type { ComputedColumn } from '@/lib/formula';
 import type { StrategyId } from '@/lib/strategies';
 import type { MobileView } from '@/components/screener/ResultsTable';
 import type { ScreenedOption } from '@/lib/optionChain';
@@ -35,6 +38,11 @@ interface LLMChatbotProps {
   }) => void;
   setStrategy: (id: StrategyId) => void;
   setResultsView: (view: MobileView) => void;
+  /** Resolves a contract the assistant named to the app's own row. */
+  findOption: (expiration: string, strike: number) => ScreenedOption | null;
+  /** Column formatting, so a card in the chat matches the table. */
+  cardColumns: Record<string, Column>;
+  computedColumns: ComputedColumn[];
   /**
    * A description of the loaded scan, for the readScreen tool. Async because it
    * waits for a scan already on its way rather than reporting "nothing loaded".
@@ -96,6 +104,9 @@ export default function LLMChatbot({
   setSortConfig,
   setStrategy,
   setResultsView,
+  findOption,
+  cardColumns,
+  computedColumns,
   readScreen,
 }: LLMChatbotProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -113,6 +124,8 @@ export default function LLMChatbot({
    * means the chart is not re-serialised into every later request.
    */
   const [charts, setCharts] = useState<Record<string, HistoryResponse>>({});
+  /** Contracts the assistant has put on screen, by tool call id. */
+  const [cards, setCards] = useState<Record<string, ScreenedOption>>({});
 
   /**
    * Run one client-side tool call and say what happened.
@@ -178,6 +191,10 @@ export default function LLMChatbot({
         if (done.length === 0) return 'Nothing to change — no settings were given.';
         return `Set ${done.join(', ')}. A fresh scan takes a moment — read the screen again before quoting its numbers.`;
       }
+      // The single setters below are no longer in the tool schema —
+      // applySettings covers them all, and carrying both cost ~500 tokens of
+      // schema on every step. They stay as a landing pad for a conversation
+      // that was already in flight when the surface changed.
       case 'setTicker': {
         const symbol = String(a.ticker).toUpperCase();
         setTicker(symbol);
@@ -235,6 +252,16 @@ export default function LLMChatbot({
       case 'readScreen':
         // The one tool that hands data back rather than changing state.
         return await readScreen();
+      case 'showOptionCard': {
+        const found = findOption(String(a.expiration), Number(a.strike));
+        if (!found) {
+          return `No contract on the current screen expires ${a.expiration} at a $${a.strike} strike. Read the screen again and use an expiration and strike exactly as it gave them.`;
+        }
+        setCards((prev) => ({ ...prev, [toolCallId]: found }));
+        // The card carries the figures; the model only needs to know it landed,
+        // so it says why rather than restating what is already visible.
+        return `Card shown for the $${found.strike} strike expiring ${found.expiration}. Its figures are on screen — say only why this contract, not what its numbers are.`;
+      }
       case 'showStockChart': {
         const symbol = String(a.ticker).toUpperCase();
         const range = String(a.range) as ChartRange;
@@ -501,7 +528,16 @@ export default function LLMChatbot({
                     </div>
                   )}
                   {invocations?.map((inv) =>
-                    charts[inv.toolCallId] ? (
+                    cards[inv.toolCallId] ? (
+                      // The card is the result; a chip beside it would say less.
+                      <div key={inv.toolCallId} className="w-full min-w-[260px]">
+                        <OptionCard
+                          option={cards[inv.toolCallId]}
+                          columns={cardColumns}
+                          computedColumns={computedColumns}
+                        />
+                      </div>
+                    ) : charts[inv.toolCallId] ? (
                       // The chart is the result; a "✓ chart shown" chip beside
                       // it would say less than the picture does.
                       <div key={inv.toolCallId} className="w-full min-w-[260px]">

@@ -20,7 +20,8 @@ export interface ToolChip {
 }
 
 /** Rejections and failures are the one case where the result IS the message. */
-const SURFACE_VERBATIM = /^(Filter rejected|Formula rejected|Could not|Unknown tool|The app could not|Nothing to change)/;
+const SURFACE_VERBATIM =
+  /^(Filter rejected|Formula rejected|Could not|No contract|Unknown tool|The app could not|Nothing to change)/;
 
 const money = (v: unknown) => `$${Number(v).toLocaleString()}`;
 
@@ -78,6 +79,8 @@ export function describeToolCall(
       // Deliberately says nothing about the data: the table is on screen, and
       // the model is about to say whatever is worth saying about it.
       return { tone: 'done', text: 'Read the screen' };
+    case 'showOptionCard':
+      return { tone: 'done', text: `Card: $${args.strike} ${args.expiration}` };
     case 'showStockChart':
       return { tone: 'done', text: `Chart: ${String(args.ticker).toUpperCase()}` };
     default:

@@ -5,10 +5,13 @@ import { Table as TableIcon, ArrowUpDown, ChevronUp, ChevronDown, ArrowDown, Arr
 import { cn, formatExpirationLabel } from '@/lib/ui';
 import { useIsMobile } from '@/lib/useMediaQuery';
 import type { ScreenedOption } from '@/lib/optionChain';
-import type { SortConfig } from './types';
+import type { SortConfig, Column } from './types';
+import { OptionCard } from './OptionCard';
 import type { ComputedColumn } from '@/lib/formula';
 
 type OptionData = ScreenedOption;
+
+export type { Column } from './types';
 
 /**
  * How results are laid out on a phone. The table is the default: it is the
@@ -22,25 +25,6 @@ const MOBILE_PAGE_SIZE = 25;
 
 /** Stable identity so the columns memo does not rebuild every render. */
 const EMPTY_COMPUTED: ComputedColumn[] = [];
-
-export interface Column {
-  label: string;
-  /** A ScreenedOption key, or a computed column id. */
-  key: string;
-  /** The sortable value. Computed columns return NaN for rows they cannot score. */
-  value: (opt: OptionData) => number | string;
-  /** How the value reads in the table cell and the mobile card. */
-  format: (opt: OptionData) => string;
-  /**
-   * Classes for the cell. A function when the styling depends on the value —
-   * an assignment return can be a loss, and should not read as a gain.
-   */
-  cellClass?: string | ((opt: OptionData) => string);
-  /** Right-aligned, for the figures the screen is ranked on. */
-  alignRight?: boolean;
-  /** Set when the column came from a user formula, so it can be removed. */
-  computed?: ComputedColumn;
-}
 
 /** Above a 0.35 delta the assignment risk is worth noticing. */
 const deltaTone = (delta: number) => (Math.abs(delta) > 0.35 ? 'text-warn' : 'text-fg-soft');
@@ -217,22 +201,6 @@ function formatComputed(v: number): string {
   return v.toPrecision(3);
 }
 
-/** Fields the mobile card shows in its detail grid, in order. */
-const CARD_DETAIL_KEYS: (keyof OptionData)[] = [
-  'lastPrice',
-  'delta',
-  'iv',
-  'moneyness',
-  'openInterest',
-  'volume',
-  'maxContracts',
-  'totalCapitalRequired',
-  'totalPremiumReceived',
-  'annualizedReturnWithGain',
-  'premiumSharePct',
-  'totalProfitIfAssigned',
-];
-
 export const ResultsTable = memo(({
   options, title, count, externalSortConfig, onExternalSortChange, capitalColumnLabel,
   computedColumns = EMPTY_COMPUTED, onRemoveComputedColumn,
@@ -400,65 +368,8 @@ export const ResultsTable = memo(({
       {isMobile && mobileView === 'cards' && (
       <ul className="space-y-2">
         {visibleOnMobile.map((opt, i) => (
-          <li
-            key={i}
-            className="rounded-lg border border-line bg-bg-2/60 p-4 space-y-3"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-1 min-w-0">
-                <p className="text-base font-bold tracking-tight text-fg">
-                  ${opt.strike.toFixed(2)}
-                </p>
-                <p className="text-[11px] text-dim flex items-center gap-2">
-                  {opt.expiration}
-                  <span className="px-1.5 py-0.5 bg-bg-3 border border-line rounded text-fg-soft font-medium font-mono text-[11px]">
-                    {opt.daysToExpiration}d
-                  </span>
-                </p>
-              </div>
-              <div className="text-right shrink-0">
-                <p className="text-lg font-bold tabular-nums text-a1 leading-none">
-                  {opt.annualizedReturn.toFixed(2)}%
-                </p>
-                <p className="text-[11px] tracking-normal text-faint mt-1">
-                  Ann. return
-                </p>
-              </div>
-            </div>
-
-            <dl className="grid grid-cols-3 gap-x-3 gap-y-2 pt-3 border-t border-line">
-              {CARD_DETAIL_KEYS.map((key) => {
-                const col = byKey[key as string];
-                if (!col) return null;
-                return (
-                  <div key={key as string} className="min-w-0">
-                    <dt className="text-[11px] tracking-normal text-faint truncate">
-                      {col.label}
-                    </dt>
-                    <dd
-                      className={cn(
-                        'font-mono text-[11px] text-fg-soft truncate',
-                        key === 'delta' && deltaTone(opt.delta)
-                      )}
-                    >
-                      {col.format(opt)}
-                    </dd>
-                  </div>
-                );
-              })}
-              {/* Computed columns join the card grid, tinted so they read as
-                  the user's own rather than part of the chain data. */}
-              {computedColumns.map((c) => (
-                <div key={c.id} className="min-w-0">
-                  <dt className="text-[11px] text-faint truncate" title={c.source}>
-                    {c.name}
-                  </dt>
-                  <dd className="font-mono text-[11px] text-a1 truncate">
-                    {byKey[c.id] ? byKey[c.id].format(opt) : '—'}
-                  </dd>
-                </div>
-              ))}
-            </dl>
+          <li key={i}>
+            <OptionCard option={opt} columns={byKey} computedColumns={computedColumns} />
           </li>
         ))}
       </ul>

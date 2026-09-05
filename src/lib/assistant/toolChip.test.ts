@@ -79,3 +79,21 @@ describe('what a tool call looks like to the user', () => {
     expect(describeToolCall('setTicker', { ticker: 'nvda' }).text).toBe('Ticker NVDA');
   });
 });
+
+describe('the contract card', () => {
+  it('names the contract, not its figures', () => {
+    // The card carries the numbers; the chip only has to identify it.
+    const chip = describeToolCall('showOptionCard', { expiration: '2026-10-16', strike: 510 });
+    expect(chip.text).toBe('Card: $510 2026-10-16');
+    expect(chip.tone).toBe('done');
+  });
+
+  it('warns when the contract is not on the current screen', () => {
+    const chip = describeToolCall(
+      'showOptionCard',
+      { expiration: '2099-01-01', strike: 1 },
+      'No contract on the current screen expires 2099-01-01 at a $1 strike.'
+    );
+    expect(chip.tone).toBe('warn');
+  });
+});
