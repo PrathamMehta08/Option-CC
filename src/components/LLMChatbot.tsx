@@ -126,6 +126,17 @@ export default function LLMChatbot({
   const [charts, setCharts] = useState<Record<string, HistoryResponse>>({});
   /** Contracts the assistant has put on screen, by tool call id. */
   const [cards, setCards] = useState<Record<string, ScreenedOption>>({});
+  /**
+   * The last screen summary handed to the model.
+   *
+   * applySettings returns the resulting screen so a question can be answered in
+   * two requests instead of three. The model does not always take that hint and
+   * calls readScreen straight afterwards — and without this it would be billed
+   * for the same paragraph twice. Comparing against what it was already given
+   * makes the redundant call nearly free, while keeping the whole saving on the
+   * turns where it does obey.
+   */
+  const lastSummary = useRef<string | null>(null);
 
   /**
    * Run one client-side tool call and say what happened.
@@ -189,7 +200,14 @@ export default function LLMChatbot({
           done.push(String(a.strategy) === 'covered-call' ? 'covered calls' : 'cash-secured puts');
         }
         if (done.length === 0) return 'Nothing to change — no settings were given.';
-        return `Set ${done.join(', ')}. A fresh scan takes a moment — read the screen again before quoting its numbers.`;
+        // Hand back the resulting screen rather than making the model ask
+        // for it. A question used to cost three requests — apply, read,
+        // answer — and each one re-sends the whole prompt and toolset. Waiting
+        // here for the scan is a local second; the round trip it saves is
+        // ~2,900 tokens against a budget of 8,000 a minute.
+        const summary = await readScreen();
+        lastSummary.current = summary;
+        return `Set ${done.join(', ')}.\n\n${summary}`;
       }
       // The single setters below are no longer in the tool schema —
       // applySettings covers them all, and carrying both cost ~500 tokens of
@@ -200,7 +218,9 @@ export default function LLMChatbot({
         setTicker(symbol);
         // No fetch is kicked off here: the ticker is the only thing the app
         // fetches on, and its own debounced effect owns that.
-        return `Ticker set to ${symbol}. A fresh scan takes a moment — read the screen again before quoting its numbers.`;
+        const summary = await readScreen();
+        lastSummary.current = summary;
+        return `Ticker set to ${symbol}.\n\n${summary}`;
       }
       case 'setCapital':
         setCapital(String(a.capital));
@@ -249,9 +269,15 @@ export default function LLMChatbot({
           ? `Added column "${added.column.name}" = ${added.column.source}, sorted by it`
           : `Formula rejected: ${added.error}`;
       }
-      case 'readScreen':
+      case 'readScreen': {
         // The one tool that hands data back rather than changing state.
-        return await readScreen();
+        const summary = await readScreen();
+        if (summary === lastSummary.current) {
+          return 'Unchanged since the screen you were given a moment ago — answer from that.';
+        }
+        lastSummary.current = summary;
+        return summary;
+      }
       case 'showOptionCard': {
         const found = findOption(String(a.expiration), Number(a.strike));
         if (!found) {
