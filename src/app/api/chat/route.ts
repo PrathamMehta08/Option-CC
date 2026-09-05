@@ -37,6 +37,11 @@ export async function POST(req: Request) {
       // rather than exceptional. The SDK's backoff turns most of those into a
       // pause instead of a dead turn; the ones it cannot are reported below.
       maxRetries: 3,
+      // A hard ceiling on the essay. The prompt asks for two or three sentences
+      // and gets a page; this makes the ceiling real, and output tokens are the
+      // expensive half of the bill. High enough that a legitimate answer is
+      // never cut off mid-sentence.
+      maxTokens: 700,
       onError: (error) => {
         console.error('[chat/route] streamText error:', describeAssistantError(error), error);
       },

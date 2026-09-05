@@ -100,6 +100,9 @@ export default function OptionAnalyzer() {
   // reason the sort is: two tables that disagree about their layout is a bug,
   // not a feature.
   const [mobileView, setMobileView] = useState<MobileView>('table');
+  // Assistant-only mode: the screener stops rendering entirely rather than
+  // sitting behind an opaque overlay building a 264-row table nobody can see.
+  const [soloMode, setSoloMode] = useState(false);
 
   // Custom keypad state and handlers. The state has to come first: the handlers
   // close over its setter.
@@ -449,6 +452,33 @@ export default function OptionAnalyzer() {
    * split is the point — a model asked to present a contract otherwise retypes
    * its figures, and a retyped figure is one that can be wrong.
    */
+  /** Everything the screen is filtered to, for the assistant-only layout. */
+  const filterSummary = useMemo(
+    () => ({
+      ticker,
+      companyName: chain?.companyName ?? null,
+      currentPrice: chain?.currentPrice ?? null,
+      strategyName: strategy.copy.name,
+      capital: capitalInput,
+      minMonths,
+      maxMonths,
+      deltaSign,
+      deltaMagnitude,
+      strikeFilter,
+      expirationsSelected: selectedExps.length,
+      expirationsAvailable: allExpirations.length,
+      matching: filteredOptions.length,
+      customFilters,
+      computedColumns,
+    }),
+    [ticker, chain, strategy.copy.name, capitalInput, minMonths, maxMonths, deltaSign,
+     deltaMagnitude, strikeFilter, selectedExps.length, allExpirations.length,
+     filteredOptions.length, customFilters, computedColumns]
+  );
+
+  /** The rows on screen, for spotting a contract the assistant named in prose. */
+  const visibleOptions = useCallback(() => rowsRef.current, []);
+
   /** The loaded spot price, for strikes the assistant gives as a % of it. */
   const currentPrice = useCallback(() => priceRef.current, []);
 
@@ -653,10 +683,13 @@ export default function OptionAnalyzer() {
         </div>
       </div>
 
+      {!soloMode && (
       <main className="max-w-[1500px] mx-auto px-4 py-6 md:px-12 md:py-10">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 md:gap-14 items-start">
+        {/* A fixed sidebar rather than a fraction of the grid: at 25% of a
+            1024px window it squeezed to 188px and clipped its own controls. */}
+        <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[350px_minmax(0,1fr)] gap-8 lg:gap-10 xl:gap-14 items-start">
           {/* Static/Sticky Sidebar on Desktop */}
-          <aside className="hidden lg:block lg:col-span-3 lg:sticky lg:top-[104px] max-h-[calc(100vh-132px)] overflow-y-auto overflow-x-hidden pb-10">
+          <aside className="hidden lg:block lg:sticky lg:top-[104px] max-h-[calc(100vh-132px)] overflow-y-auto overflow-x-hidden pb-10">
             <div className="rounded-lg border border-line bg-bg-2 divide-y divide-line-soft">
               {/* Ticker: the one thing everything else hangs off, so it leads and
                   is the only control given real size. */}
@@ -893,7 +926,7 @@ export default function OptionAnalyzer() {
           </aside>
 
           {/* Scrolling Content Area */}
-          <section className="lg:col-span-9 space-y-8 md:space-y-10">
+          <section className="min-w-0 space-y-8 md:space-y-10">
             {error && (
               <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-3 text-red-500 text-xs font-bold tracking-normal text-center justify-center">
                  <Info size={14} />
@@ -1023,6 +1056,7 @@ export default function OptionAnalyzer() {
           </section>
         </div>
       </main>
+      )}
 
       {/* Custom Keypad Bottom Sheets */}
       {activeKeypad === 'minMonths' && (
@@ -1094,6 +1128,9 @@ export default function OptionAnalyzer() {
         setStrategy={handleStrategyChange}
         setResultsView={setMobileView}
         findOption={findOption}
+        visibleOptions={visibleOptions}
+        filterSummary={filterSummary}
+        onSoloModeChange={setSoloMode}
         currentPrice={currentPrice}
         cardColumns={cardColumns}
         computedColumns={computedColumns}

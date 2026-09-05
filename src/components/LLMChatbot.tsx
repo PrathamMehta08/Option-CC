@@ -1,15 +1,16 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useChat } from '@ai-sdk/react';
 import type { Message, ToolInvocation } from 'ai';
-import { MessageSquare, X, Send, Bot, User, Loader2, AlertTriangle, Maximize2, Minimize2, Sparkles, ChevronDown } from 'lucide-react';
+import { MessageSquare, X, Send, Bot, User, Loader2, AlertTriangle, Maximize2, Minimize2, Sparkles, ChevronDown, Expand, Shrink } from 'lucide-react';
 import { cn } from '@/lib/ui';
 import { parseCustomFilter, describeFilter, type CustomFilter } from '@/lib/filters';
 import { normalizeDelta } from '@/lib/assistant/normalize';
 import { describeHistory, type ChartRange, type HistoryResponse } from '@/lib/history';
 import { StockChart } from '@/components/screener/StockChart';
 import { OptionCard } from '@/components/screener/OptionCard';
+import { ActiveFilters, type ActiveFilterSummary } from '@/components/screener/ActiveFilters';
 import type { Column } from '@/components/screener/types';
 import type { ComputedColumn } from '@/lib/formula';
 import type { StrategyId } from '@/lib/strategies';
@@ -17,6 +18,7 @@ import type { MobileView } from '@/components/screener/ResultsTable';
 import type { ScreenedOption } from '@/lib/optionChain';
 import { STARTERS } from '@/lib/assistant/starters';
 import { describeToolCall } from '@/lib/assistant/toolChip';
+import { findMentionedContract } from '@/lib/assistant/mentionedContract';
 import { Markdown } from '@/components/Markdown';
 
 interface LLMChatbotProps {
@@ -40,6 +42,12 @@ interface LLMChatbotProps {
   setResultsView: (view: MobileView) => void;
   /** Resolves a contract the assistant named to the app's own row. */
   findOption: (expiration: string, strike: number) => ScreenedOption | null;
+  /** The rows currently on screen, for spotting a contract named in prose. */
+  visibleOptions: () => ScreenedOption[];
+  /** Everything the screen is filtered to, for the assistant-only layout. */
+  filterSummary: ActiveFilterSummary;
+  /** Told when assistant-only mode turns on, so the screener can stop rendering. */
+  onSoloModeChange: (solo: boolean) => void;
   /** The loaded underlying's price, for strikes given as a % of it. */
   currentPrice: () => number;
   /** Column formatting, so a card in the chat matches the table. */
@@ -107,6 +115,9 @@ export default function LLMChatbot({
   setStrategy,
   setResultsView,
   findOption,
+  visibleOptions,
+  filterSummary,
+  onSoloModeChange,
   currentPrice,
   cardColumns,
   computedColumns,
@@ -115,6 +126,12 @@ export default function LLMChatbot({
   const [isOpen, setIsOpen] = useState(false);
   // Expanded is a display preference, so it stays local.
   const [expanded, setExpanded] = useState(false);
+  /**
+   * Assistant-only: the panel takes the whole screen and the app behind it is
+   * hidden. The settings still have to be visible or the user is driving a
+   * screen they cannot see, so they ride above the conversation as chips.
+   */
+  const [soloMode, setSoloMode] = useState(false);
   // The examples rail; open on first use, dismissable once you know the ropes.
   const [showExamples, setShowExamples] = useState(true);
   const [openGroup, setOpenGroup] = useState<string | null>(STARTERS[0].title);
@@ -348,8 +365,31 @@ export default function LLMChatbot({
   });
 
   const isLoading = status === 'submitted' || status === 'streaming';
+
+  /**
+   * A contract the assistant named in prose but did not show a card for.
+   *
+   * Skipped when it already showed one on that message — two cards for the same
+   * answer is worse than none.
+   */
+  const mentionedCard = (message: Message): ScreenedOption | null => {
+    if (!message.content) return null;
+    const already = (message.toolInvocations ?? []).some((i) => i.toolName === 'showOptionCard');
+    if (already) return null;
+    return findMentionedContract(message.content, visibleOptions());
+  };
   /** Whether there is a turn to retry — reload() re-runs the last user message. */
   const lastUserMessage = messages.some((m) => m.role === 'user');
+
+  /**
+   * A handful of starters for the places the examples rail cannot reach: a
+   * phone, and solo mode. One from each group, so the row spans the
+   * capabilities rather than five variations on the same idea.
+   */
+  const suggestions = useMemo(
+    () => (messages.length === 0 ? STARTERS.map((g) => g.prompts[0]) : []),
+    [messages.length]
+  );
 
   /** Send a starter prompt as though the user had typed and submitted it. */
   const send = (text: string) => {
@@ -384,12 +424,17 @@ export default function LLMChatbot({
         aria-label="AI assistant"
         aria-hidden={!isOpen}
         className={cn(
-          'fixed inset-x-3 bottom-3 top-16 sm:inset-x-auto sm:top-auto sm:bottom-6 sm:right-6 bg-bg border border-line rounded-lg shadow-xl overflow-hidden z-50 transition-[width,height] duration-200',
+          'fixed bg-bg border border-line shadow-xl overflow-hidden z-50 transition-[width,height] duration-200',
           // Both axes are clamped to the viewport: a fixed height runs off the
           // top of the screen on any laptop shorter than the panel.
-          expanded
-            ? 'sm:w-[min(1000px,calc(100vw-3rem))] sm:h-[min(880px,calc(100vh-3rem))]'
-            : 'sm:w-[min(720px,calc(100vw-3rem))] sm:h-[min(720px,calc(100vh-3rem))]'
+          soloMode
+            ? 'inset-0 rounded-none sm:inset-0 sm:w-auto sm:h-auto'
+            : cn(
+                'inset-x-3 bottom-3 top-16 rounded-lg sm:inset-x-auto sm:top-auto sm:bottom-6 sm:right-6',
+                expanded
+                  ? 'sm:w-[min(1000px,calc(100vw-3rem))] sm:h-[min(880px,calc(100vh-3rem))]'
+                  : 'sm:w-[min(720px,calc(100vw-3rem))] sm:h-[min(720px,calc(100vh-3rem))]'
+              )
         )}
         style={{
           display: 'flex',
@@ -404,7 +449,7 @@ export default function LLMChatbot({
             screener's filter sidebar — it belongs to the assistant. Hidden
             below sm, where the panel is already the whole screen and the empty
             state carries the same prompts inline. */}
-        {showExamples && (
+        {showExamples && !soloMode && (
           <aside className="hidden sm:flex w-[228px] shrink-0 flex-col border-r border-line bg-bg-2">
             <div className="flex items-center justify-between gap-2 px-3 py-3 border-b border-line shrink-0">
               <span className="flex items-center gap-2 font-mono text-[11px] text-faint">
@@ -486,6 +531,19 @@ export default function LLMChatbot({
             </button>
           )}
           <button
+            onClick={() => { const next = !soloMode; setSoloMode(next); onSoloModeChange(next); }}
+            aria-label={soloMode ? 'Leave assistant-only mode' : 'Assistant-only mode'}
+            title={soloMode ? 'Back to the screener' : 'Assistant only'}
+            aria-pressed={soloMode}
+            className={cn(
+              'p-2 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60',
+              soloMode ? 'bg-a1/12 text-a1' : 'text-fg-soft hover:text-fg hover:bg-bg-3'
+            )}
+          >
+            {soloMode ? <Shrink size={16} /> : <Expand size={16} />}
+          </button>
+          {!soloMode && (
+          <button
             onClick={() => setExpanded((e) => !e)}
             aria-label={expanded ? 'Shrink the assistant' : 'Expand the assistant'}
             title={expanded ? 'Shrink' : 'Expand'}
@@ -493,8 +551,9 @@ export default function LLMChatbot({
           >
             {expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
           </button>
+          )}
           <button
-            onClick={() => setIsOpen(false)}
+            onClick={() => { setIsOpen(false); setSoloMode(false); onSoloModeChange(false); }}
             aria-label="Close the assistant"
             className="p-2 text-fg-soft hover:text-fg hover:bg-bg-3 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60"
           >
@@ -503,8 +562,23 @@ export default function LLMChatbot({
           </div>
         </div>
 
+        {/* What the assistant is working against. Always shown in solo mode,
+            where the table it would otherwise be read from is gone. */}
+        {soloMode && (
+          <div className="shrink-0 border-b border-line bg-bg-2/60 px-4 py-3">
+            <ActiveFilters summary={filterSummary} />
+          </div>
+        )}
+
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div
+          className={cn(
+            'flex-1 overflow-y-auto p-4 space-y-4',
+            // A conversation the width of a desktop screen is unreadable, so
+            // the column is capped and centred rather than stretched.
+            soloMode && 'mx-auto w-full max-w-3xl'
+          )}
+        >
           {messages.length === 0 && (
             /* Showing what to type beats describing it. Each group names a
                capability and gives one prompt that exercises it; tapping one
@@ -558,6 +632,19 @@ export default function LLMChatbot({
                   'flex flex-col gap-1',
                   m.role === 'user' ? 'items-end max-w-[75%]' : 'items-start max-w-[90%] w-full'
                 )}>
+                  {m.role === 'assistant' && mentionedCard(m) && (
+                    // The assistant is told to call showOptionCard whenever it
+                    // names a contract, and does not reliably do it. Reading
+                    // the answer and showing the card anyway turns an
+                    // instruction into a guarantee.
+                    <div className="w-full min-w-[260px]">
+                      <OptionCard
+                        option={mentionedCard(m)!}
+                        columns={cardColumns}
+                        computedColumns={computedColumns}
+                      />
+                    </div>
+                  )}
                   {m.content && (
                     <div
                       className={cn(
@@ -627,8 +714,34 @@ export default function LLMChatbot({
           <div ref={messagesEndRef} />
         </div>
 
+        {/* Suggestions where the rail cannot go: a phone, and solo mode.
+            Same STARTERS, so they cannot drift from the desktop list. */}
+        {suggestions.length > 0 && (
+          <div
+            className={cn(
+              'shrink-0 border-t border-line bg-bg-2 px-3 pt-2.5',
+              // On desktop the rail already covers this, except in solo mode.
+              soloMode ? 'block' : 'sm:hidden'
+            )}
+          >
+            <div className="flex gap-1.5 overflow-x-auto scrollbar-none pb-2.5">
+              {suggestions.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => send(prompt)}
+                  disabled={isLoading}
+                  className="shrink-0 rounded-full border border-line bg-bg-3 px-3 py-1.5 text-[11px] text-fg-soft transition-colors hover:text-fg disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Input area */}
-        <div className="p-4 bg-bg-2 border-t border-line shrink-0">
+        <div className={cn('p-4 bg-bg-2 border-t border-line shrink-0', soloMode && 'mx-auto w-full max-w-3xl')}>
           <form onSubmit={handleSubmit} className="relative flex items-center">
             <input
               value={input}
