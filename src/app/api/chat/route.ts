@@ -3,6 +3,7 @@ import { createLlm, llmModel, isAssistantConfigured } from '@/lib/assistant/mode
 import { SYSTEM_PROMPT } from '@/lib/assistant/prompt';
 import { assistantTools } from '@/lib/assistant/tools';
 import { describeAssistantError } from '@/lib/assistant/errors';
+import { isFirstStepOfTurn } from '@/lib/assistant/firstStep';
 
 export const maxDuration = 30;
 
@@ -32,16 +33,32 @@ export async function POST(req: Request) {
       system: SYSTEM_PROMPT,
       messages,
       tools: assistantTools,
+      // The first step of a turn must DO something. Left to itself the model
+      // will sometimes describe a screen it never touched — a scan it did not
+      // run, over settings it did not apply — which is worse than any error,
+      // because nothing about it looks wrong. Later steps are left on auto so
+      // the turn can still finish in words.
+      toolChoice: isFirstStepOfTurn(messages) ? 'required' : 'auto',
       // A free tier can be as tight as 8,000 tokens a minute, and a single
       // multi-step turn here spends most of that, so a 429 mid-turn is routine
       // rather than exceptional. The SDK's backoff turns most of those into a
       // pause instead of a dead turn; the ones it cannot are reported below.
       maxRetries: 3,
-      // A hard ceiling on the essay. The prompt asks for two or three sentences
-      // and gets a page; this makes the ceiling real, and output tokens are the
-      // expensive half of the bill. High enough that a legitimate answer is
-      // never cut off mid-sentence.
-      maxTokens: 700,
+      // A ceiling on the essay — but it has to clear the model's REASONING
+      // first. gpt-oss thinks before it answers and those tokens count against
+      // this same budget, so a turn that thought hard about a five-part request
+      // hit 700 before emitting a single visible token: no text, no tool call,
+      // no error, an empty bubble. The prompt is what keeps answers short; this
+      // is only a backstop, so it is set where thinking cannot exhaust it.
+      maxTokens: 1600,
+      onFinish: ({ finishReason, text, toolCalls, usage }) => {
+        if (finishReason === 'length' || (!text && toolCalls.length === 0)) {
+          console.warn(
+            '[chat/route] empty turn:',
+            JSON.stringify({ finishReason, textLength: text.length, toolCalls: toolCalls.length, usage })
+          );
+        }
+      },
       onError: (error) => {
         console.error('[chat/route] streamText error:', describeAssistantError(error), error);
       },

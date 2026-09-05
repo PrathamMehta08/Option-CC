@@ -11,7 +11,11 @@ import { TOOL_PARAMETERS, TOOL_NAMES } from './tools';
  *   1. A discriminated union in the filter conditions — "anyOf disambiguation
  *      failed".
  *   2. `.optional()` fields in applySettings — "invalid JSON schema for tool
- *      applySettings: required must list every property".
+ *      applySettings: required must list every property". The fix for that one
+ *      caused the OPPOSITE failure later: with all ten fields required, the
+ *      model omitted two and the provider rejected its own model's tool call.
+ *      Probed directly on 2026-09-05, Groq accepts an empty "required", so the
+ *      fields are nullish and the invariant below is the one that holds.
  *   3. `.min()/.max()/.enum()` alongside `.nullable()`, which zod-to-json-schema
  *      cannot express as a simple type union and renders as `anyOf` — the same
  *      rejection as (1), reintroduced by a different route.
@@ -33,12 +37,10 @@ describe('every tool schema is one the provider will accept', () => {
     expect(JSON.stringify(jsonSchemaFor(name))).not.toContain('"anyOf"');
   });
 
-  it.each(TOOL_NAMES)('%s marks every property required', (name) => {
-    // Strict validation demands it. Optionality is expressed as a nullable
-    // type, never by leaving a key out of `required`.
+  it.each(TOOL_NAMES)('%s never requires a property it does not declare', (name) => {
     const schema = jsonSchemaFor(name);
     const properties = Object.keys(schema.properties ?? {});
-    expect([...(schema.required ?? [])].sort()).toEqual([...properties].sort());
+    for (const field of schema.required ?? []) expect(properties).toContain(field);
   });
 
   it.each(TOOL_NAMES)('%s describes every property, so the model knows what to send', (name) => {
@@ -76,5 +78,49 @@ describe('applySettings, the one every request goes through', () => {
       const type = (property as { type?: unknown }).type;
       expect(Array.isArray(type) && type.includes('null'), `${key} must accept null`).toBe(true);
     }
+  });
+});
+
+/**
+ * The failure this file exists to prevent, in its most recent form: a schema
+ * that demands ten fields from a model that sends eight. The provider rejected
+ * its own model's call, and the user saw "Tool call validation failed" with no
+ * settings applied.
+ */
+describe('applySettings tolerates a model that sends only what it means', () => {
+  it('requires none of its fields', () => {
+    const schema = jsonSchemaFor('applySettings');
+    expect(schema.required ?? []).toEqual([]);
+  });
+
+  it('parses a call carrying only the fields it meant to change', () => {
+    // Exactly the call that was rejected: no strike keys at all.
+    const parsed = TOOL_PARAMETERS.applySettings.safeParse({
+      ticker: 'NVDA',
+      capital: 100000,
+      minMonths: 6,
+      maxMonths: 12,
+      delta: 1,
+      minStrikePctOfSpot: 115,
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('still parses a call that spells every field out with nulls', () => {
+    // The old shape has to keep working: a conversation already in flight may
+    // be mid-turn when this ships.
+    const parsed = TOOL_PARAMETERS.applySettings.safeParse({
+      ticker: 'NVDA',
+      capital: null,
+      minMonths: null,
+      maxMonths: null,
+      delta: null,
+      minStrike: null,
+      maxStrike: null,
+      minStrikePctOfSpot: null,
+      maxStrikePctOfSpot: null,
+      strategy: null,
+    });
+    expect(parsed.success).toBe(true);
   });
 });

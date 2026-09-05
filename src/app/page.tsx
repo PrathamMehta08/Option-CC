@@ -24,6 +24,12 @@ import { STRATEGIES, STRATEGY_IDS, DEFAULT_STRATEGY_ID, type StrategyId } from '
 import type { ScreenedOption } from '@/lib/optionChain';
 import type { ChainResponse } from '@/lib/chain';
 import { MAX_MONTHS, asMonthWindow, withMonthsFrom, withMonthsTo } from '@/lib/monthWindow';
+import {
+  scanSettled,
+  settingsApplied,
+  type AppliedSettings,
+  type WantedSettings,
+} from '@/lib/scanSettled';
 import { screenLoadedChain } from '@/lib/screen';
 import { matchesFilter, describeFilter, type CustomFilter } from '@/lib/filters';
 import { compileFormula, type ComputedColumn } from '@/lib/formula';
@@ -41,6 +47,8 @@ type ChainApiResponse = ChainResponse & { error?: string };
  * has. Long enough for a cold chain fetch, short enough not to look hung.
  */
 const SCAN_WAIT_MS = 9000;
+/** How long a local re-render is given once the chain itself has arrived. */
+const SETTLE_WAIT_MS = 1500;
 
 /** The month windows worth a single click. */
 const MONTH_PRESETS: { label: string; value: [number, number] }[] = [
@@ -435,12 +443,45 @@ export default function OptionAnalyzer() {
    * writable in render under the React Compiler rules this project lints with.
    */
   const snapshotRef = useRef(snapshot);
-  const scanStateRef = useRef({ loading, ready: hasResults, wanted: ticker });
+  const scanStateRef = useRef({
+    loading,
+    wanted: ticker,
+    loaded: data?.ticker ?? null,
+    failed: !!error,
+  });
   const rowsRef = useRef(sortedOptions);
   const priceRef = useRef(chain?.currentPrice ?? 0);
+  // The settings the rows above were actually produced from — the DEFERRED
+  // strike bounds, because those are what filteredOptions read, and a knob the
+  // assistant has turned is not on screen until they catch up.
+  const appliedRef = useRef<AppliedSettings>({
+    ticker: '',
+    capital: 0,
+    delta: 0,
+    minStrike: 0,
+    maxStrike: 0,
+    strategy: '',
+  });
+  // Bumped on every commit, so a caller can tell that at least one render has
+  // happened since it changed something.
+  const commitsRef = useRef(0);
   useEffect(() => {
+    commitsRef.current += 1;
+    appliedRef.current = {
+      ticker: data?.ticker ?? '',
+      capital: capitalNumber,
+      delta: deltaMagnitude,
+      minStrike: deferredStrikeFilter[0],
+      maxStrike: deferredStrikeFilter[1],
+      strategy: strategyId,
+    };
     snapshotRef.current = snapshot;
-    scanStateRef.current = { loading, ready: hasResults, wanted: ticker };
+    scanStateRef.current = {
+      loading,
+      wanted: ticker,
+      loaded: data?.ticker ?? null,
+      failed: !!error,
+    };
     rowsRef.current = sortedOptions;
     priceRef.current = chain?.currentPrice ?? 0;
   });
@@ -501,19 +542,40 @@ export default function OptionAnalyzer() {
    * budget of 8,000 tokens a minute that wasted step is often the one that
    * runs out. Waiting costs a second and saves a request.
    */
-  const awaitScan = useCallback(async () => {
+  const awaitScan = useCallback(async (expected?: string, want: WantedSettings = {}) => {
+    // Which ticker we are waiting FOR has to be passed in. This ref is written
+    // in an effect, so in the moment just after setTicker('NVDA') it still
+    // describes the previous screen — no ticker, nothing loading, nothing
+    // ready — which read as "settled" and returned at once. The caller then
+    // saw a spot price of 0, dropped the 115%-of-price floor on the floor, and
+    // handed the model an empty screen, which it dutifully explained.
+    const target = expected ?? scanStateRef.current.wanted;
+    const changing = Object.keys(want).length > 0;
+    const committedAtEntry = commitsRef.current;
     const deadline = Date.now() + SCAN_WAIT_MS;
+    // Once the chain is in, the rest is local arithmetic. Give it a short grace
+    // period rather than the network timeout, so a value the app clamped to
+    // something other than what was asked for costs a moment, not nine seconds.
+    let settleBy = Infinity;
     while (Date.now() < deadline) {
-      const { loading: busy, ready, wanted } = scanStateRef.current;
-      if (!busy && (ready || !wanted)) return;
-      await new Promise((r) => setTimeout(r, 150));
+      if (scanSettled(scanStateRef.current, target)) {
+        if (settleBy === Infinity) settleBy = Date.now() + SETTLE_WAIT_MS;
+        const rendered = !changing || commitsRef.current > committedAtEntry;
+        if ((rendered && settingsApplied(appliedRef.current, want)) || Date.now() > settleBy) {
+          return;
+        }
+      }
+      await new Promise((r) => setTimeout(r, 100));
     }
   }, []);
 
-  const readScreen = useCallback(async () => {
-    await awaitScan();
-    return snapshotRef.current();
-  }, [awaitScan]);
+  const readScreen = useCallback(
+    async (expected?: string, want?: WantedSettings) => {
+      await awaitScan(expected, want);
+      return snapshotRef.current();
+    },
+    [awaitScan]
+  );
 
   return (
     <div className="min-h-screen font-sans antialiased text-fg selection:bg-zinc-700 pb-28 md:pb-16">

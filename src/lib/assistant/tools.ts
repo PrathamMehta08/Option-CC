@@ -49,12 +49,19 @@ export const TOOL_PARAMETERS = {
    * last message always errors" bug. Setting them together makes it one trip.
    */
   applySettings: z.object({
-    // Nullable rather than optional, and every key required. Groq validates
-    // tool schemas strictly: the schema's "required" list must name every
-    // property, so an .optional() field is rejected outright with "invalid
-    // JSON schema for tool applySettings". null is how a field says "leave
-    // this one alone".
-    // NOTHING here carries a min/max/enum alongside .nullable().
+    // Nullish: nullable AND optional. This started as nullable-and-required,
+    // on the belief that the provider demanded every property in "required".
+    // That belief cost a real failure — the model sent {ticker, capital, delta,
+    // months} without the two strike keys and the provider rejected its own
+    // model's call: "parameters for tool applySettings did not match schema:
+    // missing properties: minStrike, maxStrike". A ten-field tool where every
+    // field must appear every time will be omitted from eventually.
+    //
+    // Measured against Groq on 2026-09-05: a schema whose "required" is empty
+    // is accepted (HTTP 200) and the model then sends only the keys it means.
+    // Whatever produced that earlier rejection, this is what the provider does
+    // now, and the tests below assert it.
+    // NOTHING here carries a min/max/enum alongside .nullish().
     //
     // zod-to-json-schema cannot express a CONSTRAINED nullable as a simple type
     // union, so it emits `anyOf: [{type:number,minimum:0}, {type:null}]` — and
@@ -64,30 +71,30 @@ export const TOOL_PARAMETERS = {
     // accepts. The bounds are enforced in the app instead, by withMonthsFrom,
     // normalizeDelta and the strategy lookup, which have to be defensive about
     // model output anyway.
-    ticker: z.string().nullable().describe('Stock ticker, or null to leave it'),
-    capital: z.number().nullable().describe('Capital in dollars, or null to leave it'),
-    minMonths: z.number().nullable().describe('Min whole months to expiry, 0-24, or null'),
-    maxMonths: z.number().nullable().describe('Max whole months to expiry, 0-24, or null'),
+    ticker: z.string().nullish().describe('Stock ticker, or null to leave it'),
+    capital: z.number().nullish().describe('Capital in dollars, or null to leave it'),
+    minMonths: z.number().nullish().describe('Min whole months to expiry, 0-24, or null'),
+    maxMonths: z.number().nullish().describe('Max whole months to expiry, 0-24, or null'),
     delta: z
       .number()
-      .nullable()
+      .nullish()
       .describe('Max delta 0-1. Above 1 is hundredths (30 = 0.30); 1 or less is used as given, so 1 means 1.00'),
-    minStrike: z.number().nullable().describe('Min strike in dollars, or null'),
-    maxStrike: z.number().nullable().describe('Max strike in dollars, or null'),
+    minStrike: z.number().nullish().describe('Min strike in dollars, or null'),
+    maxStrike: z.number().nullish().describe('Max strike in dollars, or null'),
     // Percentages of spot, so "strikes from 115% of the current price" does not
     // require knowing the price first. The model was stopping to ask for it,
     // which is a whole round trip to learn something the app already knows.
     minStrikePctOfSpot: z
       .number()
-      .nullable()
+      .nullish()
       .describe('Min strike as a % of the current price (115 = 15% above), or null'),
     maxStrikePctOfSpot: z
       .number()
-      .nullable()
+      .nullish()
       .describe('Max strike as a % of the current price, or null'),
     strategy: z
       .string()
-      .nullable()
+      .nullish()
       .describe('"covered-call" or "cash-secured-put", only when the user says which they want; otherwise null'),
   }),
 

@@ -18,6 +18,7 @@ import type { MobileView } from '@/components/screener/ResultsTable';
 import type { ScreenedOption } from '@/lib/optionChain';
 import { STARTERS } from '@/lib/assistant/starters';
 import { describeToolCall, visibleInvocations } from '@/lib/assistant/toolChip';
+import type { WantedSettings } from '@/lib/scanSettled';
 import { findMentionedContract } from '@/lib/assistant/mentionedContract';
 import { Markdown } from '@/components/Markdown';
 
@@ -50,8 +51,8 @@ interface LLMChatbotProps {
   onSoloModeChange: (solo: boolean) => void;
   /** The loaded underlying's price, for strikes given as a % of it. */
   currentPrice: () => number;
-  /** Resolves once an in-flight scan has settled. */
-  awaitScan: () => Promise<void>;
+  /** Resolves once the scan for a given ticker has settled. */
+  awaitScan: (expected?: string, want?: WantedSettings) => Promise<void>;
   /** Column formatting, so a card in the chat matches the table. */
   cardColumns: Record<string, Column>;
   computedColumns: ComputedColumn[];
@@ -59,7 +60,7 @@ interface LLMChatbotProps {
    * A description of the loaded scan, for the readScreen tool. Async because it
    * waits for a scan already on its way rather than reporting "nothing loaded".
    */
-  readScreen: () => Promise<string>;
+  readScreen: (expected?: string, want?: WantedSettings) => Promise<string>;
 }
 
 /**
@@ -190,13 +191,23 @@ export default function LLMChatbot({
         // Every field is optional and an omitted one is left alone, so this
         // cannot clear a setting the user never mentioned.
         const done: string[] = [];
+        // The ticker this call is switching to, so everything downstream waits
+        // for THAT scan rather than for whatever was on screen before.
+        let pending: string | undefined;
+        // What the screen has to look like before it is worth reading back.
+        // Without this the model was handed the board from BEFORE its own
+        // filter landed, and recommended a contract that filter excludes.
+        const want: WantedSettings = {};
         if (a.ticker != null) {
           const symbol = String(a.ticker).toUpperCase();
           setTicker(symbol);
+          pending = symbol;
+          want.ticker = symbol;
           done.push(`ticker ${symbol}`);
         }
         if (a.capital != null) {
           setCapital(String(a.capital));
+          want.capital = Number(a.capital);
           done.push(`capital $${a.capital}`);
         }
         if (a.minMonths != null) setMinMonths(Number(a.minMonths));
@@ -207,6 +218,7 @@ export default function LLMChatbot({
         if (a.delta != null) {
           const magnitude = normalizeDelta(Number(a.delta));
           setDeltaMagnitude(magnitude);
+          want.delta = magnitude;
           done.push(`delta ${magnitude}`);
         }
         // A percentage has to resolve against the price of the ticker being
@@ -215,7 +227,7 @@ export default function LLMChatbot({
         // reading the price now would use the previous stock's. Wait for the
         // scan first, and only when a percentage was actually given.
         const wantsPct = a.minStrikePctOfSpot != null || a.maxStrikePctOfSpot != null;
-        if (wantsPct) await awaitScan();
+        if (wantsPct) await awaitScan(pending);
         const spot = currentPrice();
         const fromPct = (pct: unknown) =>
           pct != null && spot > 0 ? Number(((Number(pct) / 100) * spot).toFixed(2)) : null;
@@ -227,6 +239,10 @@ export default function LLMChatbot({
         const minStrike = minFromPct ?? (a.minStrike != null ? Number(a.minStrike) : null);
         const maxStrike = maxFromPct ?? (a.maxStrike != null ? Number(a.maxStrike) : null);
 
+        // A percentage that could not be resolved must not pass silently: the
+        // request was a floor at 115% of the price, and applying no floor at
+        // all is a different screen presented as the one that was asked for.
+        const unresolved = wantsPct && spot <= 0;
         if (minStrike != null || maxStrike != null) {
           // Only one end may be given, so the other keeps whatever it has
           // rather than being reset to an arbitrary bound.
@@ -234,6 +250,8 @@ export default function LLMChatbot({
             minStrike ?? low,
             maxStrike ?? high,
           ]);
+          if (minStrike != null) want.minStrike = minStrike;
+          if (maxStrike != null) want.maxStrike = maxStrike;
           done.push(`strikes $${minStrike ?? 'any'}-$${maxStrike ?? 'any'}`);
         }
         if (a.strategy != null) {
@@ -242,6 +260,7 @@ export default function LLMChatbot({
             return `Unknown strategy "${wanted}". Use "covered-call" or "cash-secured-put".`;
           }
           setStrategy(wanted);
+          want.strategy = wanted;
           done.push(wanted === 'covered-call' ? 'covered calls' : 'cash-secured puts');
         }
         if (done.length === 0) return 'Nothing to change — no settings were given.';
@@ -250,9 +269,12 @@ export default function LLMChatbot({
         // answer — and each one re-sends the whole prompt and toolset. Waiting
         // here for the scan is a local second; the round trip it saves is
         // ~2,900 tokens against a budget of 8,000 a minute.
-        const summary = await readScreen();
+        const summary = await readScreen(pending, want);
         lastSummary.current = summary;
-        return `Set ${done.join(', ')}.\n\n${summary}`;
+        const note = unresolved
+          ? ' The strike given as a % of the price could not be resolved: no price is loaded, so no such limit was applied. Say so rather than describing the screen as if it had been.'
+          : '';
+        return `Set ${done.join(', ')}.${note}\n\n${summary}`;
       }
       // The single setters below are no longer in the tool schema —
       // applySettings covers them all, and carrying both cost ~500 tokens of
@@ -263,7 +285,7 @@ export default function LLMChatbot({
         setTicker(symbol);
         // No fetch is kicked off here: the ticker is the only thing the app
         // fetches on, and its own debounced effect owns that.
-        const summary = await readScreen();
+        const summary = await readScreen(symbol);
         lastSummary.current = summary;
         return `Ticker set to ${symbol}.\n\n${summary}`;
       }
@@ -714,14 +736,32 @@ export default function LLMChatbot({
                   {m.role === 'assistant' &&
                     !m.content &&
                     !isLoading &&
-                    (invocations?.length ?? 0) > 0 &&
-                    m.id === messages[messages.length - 1]?.id && (
+                    !error &&
+                    m.id === messages[messages.length - 1]?.id &&
+                    ((invocations?.length ?? 0) > 0 ? (
                       // A turn that spends its whole step budget on tools ends
                       // with no text at all, and an answer that is only tick
                       // marks reads as the assistant having ignored you. Say
                       // that it finished rather than leaving the space blank.
                       <p className="px-1 text-[11px] text-faint">Done — nothing further to add.</p>
-                    )}
+                    ) : (
+                      // Nothing at all: no text, no tool call, no error. The
+                      // model can finish a turn having emitted nothing, and an
+                      // empty bubble tells the user only that they were
+                      // ignored. Say what happened and offer the retry.
+                      <div className="flex items-center gap-2">
+                        <p className="px-1 text-[11px] text-faint">
+                          The assistant returned nothing that time.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => { if (!isLoading) reload(); }}
+                          className="rounded-md border border-line bg-bg-3 px-2 py-1 text-[11px] font-bold text-fg-soft transition-colors hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60"
+                        >
+                          Try again
+                        </button>
+                      </div>
+                    ))}
                 </div>
               </div>
             );
