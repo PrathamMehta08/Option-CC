@@ -198,6 +198,24 @@ export default function LLMChatbot({
         // Without this the model was handed the board from BEFORE its own
         // filter landed, and recommended a contract that filter excludes.
         const want: WantedSettings = {};
+
+        // STRATEGY FIRST, and this order is load-bearing. Switching strategy
+        // resets months, delta and custom filters to that strategy's defaults,
+        // and changes the board key, which resets the strike range to the whole
+        // board. Applied last — as it was — it wiped every other setting in the
+        // same call: the chip read "1 delta, 6-12 months, strikes 115% of spot"
+        // over a screen showing 0.3 delta, 0-6 months and $0-$2500.
+        let strategyLabel: string | null = null;
+        if (a.strategy != null) {
+          const wanted = String(a.strategy);
+          if (wanted !== 'covered-call' && wanted !== 'cash-secured-put') {
+            return `Unknown strategy "${wanted}". Use "covered-call" or "cash-secured-put".`;
+          }
+          setStrategy(wanted);
+          want.strategy = wanted;
+          strategyLabel = wanted === 'covered-call' ? 'covered calls' : 'cash-secured puts';
+        }
+
         if (a.ticker != null) {
           const symbol = String(a.ticker).toUpperCase();
           setTicker(symbol);
@@ -205,6 +223,10 @@ export default function LLMChatbot({
           want.ticker = symbol;
           done.push(`ticker ${symbol}`);
         }
+        // Let the strategy switch, and the resets it triggers, actually land
+        // before anything is set on top of it.
+        if (strategyLabel) await awaitScan(pending, { strategy: want.strategy });
+
         if (a.capital != null) {
           setCapital(String(a.capital));
           want.capital = Number(a.capital);
@@ -254,15 +276,9 @@ export default function LLMChatbot({
           if (maxStrike != null) want.maxStrike = maxStrike;
           done.push(`strikes $${minStrike ?? 'any'}-$${maxStrike ?? 'any'}`);
         }
-        if (a.strategy != null) {
-          const wanted = String(a.strategy);
-          if (wanted !== 'covered-call' && wanted !== 'cash-secured-put') {
-            return `Unknown strategy "${wanted}". Use "covered-call" or "cash-secured-put".`;
-          }
-          setStrategy(wanted);
-          want.strategy = wanted;
-          done.push(wanted === 'covered-call' ? 'covered calls' : 'cash-secured puts');
-        }
+        // Reported last, though it was applied first: the chip reads better
+        // starting from the ticker.
+        if (strategyLabel) done.push(strategyLabel);
         if (done.length === 0) return 'Nothing to change — no settings were given.';
         // Hand back the resulting screen rather than making the model ask
         // for it. A question used to cost three requests — apply, read,

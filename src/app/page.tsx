@@ -550,7 +550,10 @@ export default function OptionAnalyzer() {
     // saw a spot price of 0, dropped the 115%-of-price floor on the floor, and
     // handed the model an empty screen, which it dutifully explained.
     const target = expected ?? scanStateRef.current.wanted;
-    const changing = Object.keys(want).length > 0;
+    // Only wait for a render if something asked for is not already true. A
+    // no-op change produces no commit, and waiting for one that never comes
+    // stalls the turn for the whole grace period.
+    const changing = !settingsApplied(appliedRef.current, want);
     const committedAtEntry = commitsRef.current;
     const deadline = Date.now() + SCAN_WAIT_MS;
     // Once the chain is in, the rest is local arithmetic. Give it a short grace
