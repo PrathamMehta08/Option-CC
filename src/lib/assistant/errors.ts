@@ -61,7 +61,7 @@ export function describeAssistantError(error: unknown): string {
       return `The assistant has used up its daily ${provider} allowance. The screener and every filter still work — the assistant will come back when the quota resets. A provider with more room, or a local model, is a change to LLM_BASE_URL.`;
     }
     return wait
-      ? `${provider}'s rate limit was hit — a full request here is about 7,000 tokens and free tiers are often capped at 8,000 a minute. Try again in ${wait}s, or point LLM_BASE_URL somewhere with more room.`
+      ? `${provider}'s rate limit was hit — a turn here costs about 9,000 tokens, which is more than a free tier capped at 8,000 a minute allows. Try again in ${wait}s, or set LLM_BASE_URL to a provider with more room — note that on a deployment that means the host's environment variables, not .env.local.`
       : `${provider}'s rate limit was hit. Give it a few seconds and try again.`;
   }
 
