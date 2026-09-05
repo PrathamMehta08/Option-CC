@@ -17,7 +17,7 @@ import type { StrategyId } from '@/lib/strategies';
 import type { MobileView } from '@/components/screener/ResultsTable';
 import type { ScreenedOption } from '@/lib/optionChain';
 import { STARTERS } from '@/lib/assistant/starters';
-import { describeToolCall } from '@/lib/assistant/toolChip';
+import { describeToolCall, visibleInvocations } from '@/lib/assistant/toolChip';
 import { findMentionedContract } from '@/lib/assistant/mentionedContract';
 import { Markdown } from '@/components/Markdown';
 
@@ -334,7 +334,14 @@ export default function LLMChatbot({
       case 'showOptionCard': {
         const found = findOption(String(a.expiration), Number(a.strike));
         if (!found) {
-          return `No contract on the current screen expires ${a.expiration} at a $${a.strike} strike. Read the screen again and use an expiration and strike exactly as it gave them.`;
+          // Naming the rows it can pick from saves the readScreen round trip it
+          // would otherwise need — two steps of a five-step budget, which is
+          // how a turn ran out of room before it wrote its closing sentence.
+          const choices = visibleOptions()
+            .slice(0, 8)
+            .map((o) => `${o.expiration} $${o.strike}`)
+            .join('; ');
+          return `No contract on the current screen expires ${a.expiration} at a $${a.strike} strike. Pick one of these instead, exactly as written: ${choices || 'the screen is empty'}.`;
         }
         setCards((prev) => ({ ...prev, [toolCallId]: found }));
         // The card carries the figures; the model only needs to know it landed,
@@ -365,7 +372,10 @@ export default function LLMChatbot({
 
   const { messages, input, handleInputChange, handleSubmit, status, error, append, reload } = useChat({
     api: '/api/chat',
-    maxSteps: 5,
+    // Six, not five: a turn that stumbles once still needs a step left over
+    // to write its closing sentence, and running out mid-turn is what made
+    // the assistant answer with tool chips and nothing else.
+    maxSteps: 6,
     // Returning a value here registers it as the tool result and lets the SDK
     // continue the turn, so nothing has to watch the message list for work.
     onToolCall: async ({ toolCall }) => {
@@ -393,7 +403,12 @@ export default function LLMChatbot({
    */
   const mentionedCard = (message: Message): ScreenedOption | null => {
     if (!message.content) return null;
-    const already = (message.toolInvocations ?? []).some((i) => i.toolName === 'showOptionCard');
+    // Only a card that actually appeared counts. A showOptionCard that was
+    // rejected left the answer with no card at all, because this saw the
+    // attempt and stood down.
+    const already = (message.toolInvocations ?? []).some(
+      (i) => i.toolName === 'showOptionCard' && !String(i.state === 'result' ? i.result ?? '' : '').startsWith('No contract')
+    );
     if (already) return null;
     return findMentionedContract(message.content, visibleOptions());
   };
@@ -676,7 +691,7 @@ export default function LLMChatbot({
                       {m.role === 'user' ? m.content : <Markdown>{m.content}</Markdown>}
                     </div>
                   )}
-                  {invocations?.map((inv) =>
+                  {visibleInvocations(invocations ?? []).map((inv) =>
                     cards[inv.toolCallId] ? (
                       // The card is the result; a chip beside it would say less.
                       <div key={inv.toolCallId} className="w-full min-w-[260px]">
@@ -696,6 +711,17 @@ export default function LLMChatbot({
                     <ToolChip key={inv.toolCallId} invocation={inv} />
                     )
                   )}
+                  {m.role === 'assistant' &&
+                    !m.content &&
+                    !isLoading &&
+                    (invocations?.length ?? 0) > 0 &&
+                    m.id === messages[messages.length - 1]?.id && (
+                      // A turn that spends its whole step budget on tools ends
+                      // with no text at all, and an answer that is only tick
+                      // marks reads as the assistant having ignored you. Say
+                      // that it finished rather than leaving the space blank.
+                      <p className="px-1 text-[11px] text-faint">Done — nothing further to add.</p>
+                    )}
                 </div>
               </div>
             );

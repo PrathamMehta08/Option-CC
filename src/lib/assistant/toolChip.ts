@@ -21,7 +21,70 @@ export interface ToolChip {
 
 /** Rejections and failures are the one case where the result IS the message. */
 const SURFACE_VERBATIM =
-  /^(Filter rejected|Formula rejected|Could not|No contract|Unknown tool|The app could not|Nothing to change)/;
+  /^(Filter rejected|Formula rejected|Could not|No contract|No column|Unknown tool|The app could not|Nothing to change)/;
+
+/**
+ * Rejections the assistant is expected to notice and fix inside the same turn.
+ *
+ * These strings are written FOR THE MODEL — "No contract on the current screen
+ * expires 2027-03-19 at a $10 strike. Read the screen again..." is a correction
+ * addressed to it, and it usually obeys: it re-reads and shows the right card a
+ * step later. Printing the correction under a warning triangle turned a
+ * self-repair the user never needed to know about into an error they had to
+ * puzzle over, immediately above the correct answer.
+ */
+const RECOVERABLE = /^(No contract|No column|Formula rejected|Filter rejected)/;
+
+/** The shape of a tool invocation, as much of it as the chips care about. */
+export interface ChipInvocation {
+  toolName: string;
+  state?: string;
+  result?: unknown;
+}
+
+const resultOf = (inv: ChipInvocation) =>
+  inv.state === 'result' ? String(inv.result ?? '') : '';
+
+/**
+ * The invocations worth showing.
+ *
+ * A recoverable rejection is dropped when a later call to the same tool in the
+ * same answer succeeded — the assistant fixed it, so the user sees the fix and
+ * not the stumble. One that was never recovered from stays: it is the reason
+ * nothing happened, and hiding it would leave the answer unexplained.
+ */
+export function visibleInvocations<T extends ChipInvocation>(all: T[]): T[] {
+  return all.filter((inv, i) => {
+    if (!RECOVERABLE.test(resultOf(inv))) return true;
+    return !all.some(
+      (later, j) =>
+        j > i &&
+        later.toolName === inv.toolName &&
+        later.state === 'result' &&
+        !RECOVERABLE.test(resultOf(later))
+    );
+  });
+}
+
+/** Sentences that tell the MODEL what to do next, rather than saying anything. */
+const MODEL_INSTRUCTION = /^(Pick|Read|Use|Try|Choose|Call|Ask|Say)\b/;
+
+/**
+ * The part of a rejection a person needs.
+ *
+ * These messages end with an instruction to the model — "Read the screen again
+ * and use an expiration and strike exactly as it gave them" — which is noise to
+ * anyone else, and reads as an error being handed to the user. What went wrong
+ * is kept; what the assistant should do about it is not. Anything genuinely
+ * explanatory ("Valid fields are the numeric columns") stays.
+ */
+function forThePerson(text: string): string {
+  const sentences = text.split(/(?<=\.)\s+/);
+  while (sentences.length > 1 && MODEL_INSTRUCTION.test(sentences[sentences.length - 1])) {
+    sentences.pop();
+  }
+  return sentences.join(' ');
+}
 
 const money = (v: unknown) => `$${Number(v).toLocaleString()}`;
 
@@ -32,7 +95,7 @@ export function describeToolCall(
   result?: string
 ): ToolChip {
   if (result && SURFACE_VERBATIM.test(result)) {
-    return { tone: 'warn', text: result };
+    return { tone: 'warn', text: forThePerson(result) };
   }
 
   switch (toolName) {

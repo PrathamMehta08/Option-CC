@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeToolCall } from './toolChip';
+import { describeToolCall, visibleInvocations } from './toolChip';
 
 /**
  * A chip says what the assistant DID. The tool's own result string is written
@@ -122,6 +122,78 @@ describe('strikes given as a percentage of spot', () => {
   it('says "any" for an edge that was left alone', () => {
     expect(describeToolCall('applySettings', { maxStrike: 500 }).text).toBe(
       'Set strikes any–$500'
+    );
+  });
+});
+
+/**
+ * The reported confusion, verbatim: a warning triangle reading "No contract on
+ * the current screen expires 2027-03-19 at a $10 strike. Read the screen again
+ * and use an expiration and strike exactly as it gave them." sat directly above
+ * the correct card. The assistant had corrected itself; the correction was
+ * addressed to the model, and the user was left reading an error about a repair
+ * that had already happened.
+ */
+describe('rejections the assistant recovered from', () => {
+  const rejected = {
+    toolName: 'showOptionCard',
+    state: 'result',
+    result: 'No contract on the current screen expires 2027-03-19 at a $10 strike. Pick one of these instead.',
+  };
+  const succeeded = {
+    toolName: 'showOptionCard',
+    state: 'result',
+    result: 'Card shown for the $265 strike expiring 2027-03-19.',
+  };
+  const read = { toolName: 'readScreen', state: 'result', result: 'Underlying: AAPL…' };
+
+  it('hides a rejection the same tool went on to satisfy', () => {
+    expect(visibleInvocations([rejected, read, succeeded])).toEqual([read, succeeded]);
+  });
+
+  it('keeps a rejection nothing recovered from', () => {
+    // Here it IS the explanation for why no card appeared.
+    expect(visibleInvocations([rejected, read])).toEqual([rejected, read]);
+  });
+
+  it('does not let a different tool succeeding cover for it', () => {
+    const chart = { toolName: 'showStockChart', state: 'result', result: 'Up 4%.' };
+    expect(visibleInvocations([rejected, chart])).toEqual([rejected, chart]);
+  });
+
+  it('keeps a rejection that a later attempt also failed', () => {
+    const again = { ...rejected, result: 'No contract on the current screen expires 2027-06-18 at a $9 strike.' };
+    expect(visibleInvocations([rejected, again])).toHaveLength(2);
+  });
+
+  it('leaves ordinary calls alone, in order', () => {
+    const calls = [
+      { toolName: 'applySettings', state: 'result', result: 'Underlying: AAPL…' },
+      { toolName: 'setSort', state: 'result', result: 'Sorted by annualizedReturn desc' },
+    ];
+    expect(visibleInvocations(calls)).toEqual(calls);
+  });
+
+  it('keeps a call still running', () => {
+    const pending = { toolName: 'showOptionCard', state: 'call' };
+    expect(visibleInvocations([pending])).toEqual([pending]);
+  });
+});
+
+describe('what a surviving warning says', () => {
+  it('drops the half addressed to the model', () => {
+    const chip = describeToolCall(
+      'showOptionCard',
+      { expiration: '2027-03-19', strike: 10 },
+      'No contract on the current screen expires 2027-03-19 at a $10 strike. Pick one of these instead, exactly as written: 2027-03-19 $265; 2027-03-19 $270.'
+    );
+    expect(chip.tone).toBe('warn');
+    expect(chip.text).toBe('No contract on the current screen expires 2027-03-19 at a $10 strike.');
+  });
+
+  it('leaves a one-sentence rejection whole', () => {
+    expect(describeToolCall('addComputedColumn', { name: 'HM' }, 'Formula rejected: no such column').text).toBe(
+      'Formula rejected: no such column'
     );
   });
 });
