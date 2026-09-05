@@ -51,6 +51,7 @@ function state(overrides: Partial<ScreenState> = {}): ScreenState {
     strategyName: 'Covered Calls',
     resultsView: 'table',
     capital: '100,000',
+    selectedExpirations: ['2026-10-16', '2026-11-20', '2027-03-19'],
     minMonths: 0,
     maxMonths: 6,
     deltaSign: '',

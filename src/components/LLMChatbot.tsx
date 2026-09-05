@@ -104,6 +104,9 @@ function ToolChip({ invocation }: { invocation: ToolInvocation }) {
   );
 }
 
+/** The provider''s complaint when a required tool call was refused. */
+const TOOL_REFUSAL = /tool choice is required/i;
+
 export default function LLMChatbot({
   subtitle,
   setTicker,
@@ -128,6 +131,9 @@ export default function LLMChatbot({
   readScreen,
 }: LLMChatbotProps) {
   const [isOpen, setIsOpen] = useState(false);
+  // One automatic retry per turn, and only for a refused tool call.
+  const proseRetryRef = useRef(false);
+  const reloadRef = useRef<((options?: { body?: Record<string, unknown> }) => void) | null>(null);
   // Expanded is a display preference, so it stays local.
   const [expanded, setExpanded] = useState(false);
   /**
@@ -276,6 +282,23 @@ export default function LLMChatbot({
           if (maxStrike != null) want.maxStrike = maxStrike;
           done.push(`strikes $${minStrike ?? 'any'}-$${maxStrike ?? 'any'}`);
         }
+        // A filter asked for in the same breath as the settings. Applied here
+        // rather than left to a second call the model does not always make.
+        if (a.filter != null) {
+          const raw = a.filter as Record<string, unknown>;
+          const parsed = parseCustomFilter({
+            id: `f${Date.now().toString(36)}`,
+            mode: 'and',
+            ...raw,
+          });
+          if (!parsed.ok) {
+            return `Filter rejected: ${parsed.error}. Valid fields are the numeric columns; valid operators are gt, gte, lt, lte, eq, between.`;
+          }
+          addCustomFilter(parsed.filter);
+          want.newestFilter = parsed.filter.id;
+          done.push(describeFilter(parsed.filter));
+        }
+
         // Reported last, though it was applied first: the chip reads better
         // starting from the ticker.
         if (strategyLabel) done.push(strategyLabel);
@@ -350,6 +373,9 @@ export default function LLMChatbot({
           return `Filter rejected: ${parsed.error}. Valid fields are the numeric columns; valid operators are gt, gte, lt, lte, eq, between.`;
         }
         addCustomFilter(parsed.filter);
+        // Wait for it to reach the table: a readScreen straight afterwards was
+        // otherwise answered from the rows as they were before the filter.
+        await awaitScan(undefined, { newestFilter: parsed.filter.id });
         return `Filter applied — ${describeFilter(parsed.filter)}`;
       }
       case 'addComputedColumn': {
@@ -408,7 +434,16 @@ export default function LLMChatbot({
     }
   };
 
-  const { messages, input, handleInputChange, handleSubmit, status, error, append, reload } = useChat({
+  const {
+    messages,
+    input,
+    handleInputChange,
+    handleSubmit,
+    status,
+    error,
+    append,
+    reload,
+  } = useChat({
     api: '/api/chat',
     // Six, not five: a turn that stumbles once still needs a step left over
     // to write its closing sentence, and running out mid-turn is what made
@@ -429,7 +464,24 @@ export default function LLMChatbot({
         }`;
       }
     },
+    onError: (err) => {
+      // The first step of a turn is told it must call a tool, and the model
+      // sometimes refuses — which the provider reports as a hard failure. The
+      // turn is not lost; it just needs to be allowed to answer in words. The
+      // user had already found this by hand: press Try again and it works. Do
+      // it for them, once, so a refusal costs a second instead of a dead end.
+      if (!TOOL_REFUSAL.test(err.message) || proseRetryRef.current) return;
+      proseRetryRef.current = true;
+      setTimeout(() => reloadRef.current?.({ body: { allowProse: true } }), 0);
+    },
   });
+
+  // reload is defined by the hook above, so the retry reaches it through a ref
+  // rather than being declared before it exists. Written in an effect: refs are
+  // not writable during render under the rules this project lints with.
+  useEffect(() => {
+    reloadRef.current = reload;
+  }, [reload]);
 
   const isLoading = status === 'submitted' || status === 'streaming';
 
@@ -466,6 +518,7 @@ export default function LLMChatbot({
   /** Send a starter prompt as though the user had typed and submitted it. */
   const send = (text: string) => {
     if (isLoading) return;
+    proseRetryRef.current = false;
     append({ role: 'user', content: text });
   };
 
@@ -843,7 +896,14 @@ export default function LLMChatbot({
 
         {/* Input area */}
         <div className={cn('p-4 bg-bg-2 border-t border-line shrink-0', soloMode && 'mx-auto w-full max-w-3xl')}>
-          <form onSubmit={handleSubmit} className="relative flex items-center">
+          <form
+            onSubmit={(e) => {
+              // A new turn gets its own retry.
+              proseRetryRef.current = false;
+              handleSubmit(e);
+            }}
+            className="relative flex items-center"
+          >
             <input
               value={input}
               onChange={handleInputChange}

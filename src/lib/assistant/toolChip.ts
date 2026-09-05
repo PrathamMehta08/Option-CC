@@ -128,6 +128,8 @@ export function describeToolCall(
       if (args.strategy != null) {
         parts.push(args.strategy === 'covered-call' ? 'covered calls' : 'cash-secured puts');
       }
+      const filter = args.filter as { name?: unknown } | null | undefined;
+      if (filter?.name != null) parts.push(`filter ${String(filter.name)}`);
       return { tone: 'done', text: parts.length ? `Set ${parts.join(', ')}` : 'No settings changed' };
     }
     case 'setTicker':

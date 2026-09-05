@@ -1,5 +1,6 @@
 import type { ScreenedOption, ScreenerResponse } from '@/lib/optionChain';
 import { describeFilter, type CustomFilter } from '@/lib/filters';
+import { explainEmptyScreen } from './emptyScreen';
 import type { ComputedColumn } from '@/lib/formula';
 
 /**
@@ -28,6 +29,8 @@ export interface ScreenState {
   deltaSign: string;
   deltaMagnitude: number;
   strikeFilter: [number, number];
+  /** Which expirations are ticked, so an empty screen can be explained exactly. */
+  selectedExpirations: string[];
   customFilters: CustomFilter[];
   computedColumns: ComputedColumn[];
   sort: { key: string | null; direction: 'asc' | 'desc' | null };
@@ -83,6 +86,15 @@ export function describeScreen(s: ScreenState): string {
   const top = s.visible.slice(0, TOP_ROWS);
   if (top.length === 0) {
     lines.push('No rows match the current filters.');
+    // Which filter, specifically, and what was on offer behind it. Without
+    // this the model guesses a list of three and is disbelieved.
+    const why = explainEmptyScreen({
+      options: s.data.options,
+      strikeFilter: s.strikeFilter,
+      selectedExpirations: s.selectedExpirations,
+      customFilters: s.customFilters,
+    });
+    if (why) lines.push(why, 'Say which filter is responsible and what range is actually available. Do not guess at a list of possible causes.');
   } else {
     // Said explicitly because the model was hedging about whether these were
     // really the leaders — and for a while it was right to, since the list it

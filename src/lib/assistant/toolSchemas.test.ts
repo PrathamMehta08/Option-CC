@@ -75,6 +75,10 @@ describe('applySettings, the one every request goes through', () => {
   it('lets every field be null, so an unmentioned setting is left alone', () => {
     const properties = jsonSchemaFor('applySettings').properties ?? {};
     for (const [key, property] of Object.entries(properties)) {
+      // filter is the exception, and deliberately so: a nullable OBJECT
+      // serialises as anyOf, which the provider rejects. It is optional only,
+      // which the empty required list above already makes safe to omit.
+      if (key === 'filter') continue;
       const type = (property as { type?: unknown }).type;
       expect(Array.isArray(type) && type.includes('null'), `${key} must accept null`).toBe(true);
     }

@@ -26,7 +26,9 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { messages } = await req.json();
+    // allowProse is the client saying "this turn already failed for refusing
+    // to call a tool; let it answer in words this time".
+    const { messages, allowProse } = await req.json();
 
     const result = streamText({
       model: createLlm()(llmModel()),
@@ -38,7 +40,12 @@ export async function POST(req: Request) {
       // run, over settings it did not apply — which is worse than any error,
       // because nothing about it looks wrong. Later steps are left on auto so
       // the turn can still finish in words.
-      toolChoice: isFirstStepOfTurn(messages) ? 'required' : 'auto',
+      //
+      // But a model that refuses is a hard failure — "Tool choice is required,
+      // but model did not call a tool" — and some turns genuinely are just
+      // talk. So the client retries once with this off, which is exactly the
+      // Try again the user was pressing by hand.
+      toolChoice: isFirstStepOfTurn(messages) && !allowProse ? 'required' : 'auto',
       // A free tier can be as tight as 8,000 tokens a minute, and a single
       // multi-step turn here spends most of that, so a 429 mid-turn is routine
       // rather than exceptional. The SDK's backoff turns most of those into a

@@ -431,6 +431,7 @@ export default function OptionAnalyzer() {
       deltaSign,
       deltaMagnitude,
       strikeFilter,
+      selectedExpirations: selectedExps,
       customFilters,
       computedColumns,
       sort: globalSortConfig,
@@ -461,6 +462,7 @@ export default function OptionAnalyzer() {
     minStrike: 0,
     maxStrike: 0,
     strategy: '',
+    newestFilter: '',
   });
   // Bumped on every commit, so a caller can tell that at least one render has
   // happened since it changed something.
@@ -474,6 +476,7 @@ export default function OptionAnalyzer() {
       minStrike: deferredStrikeFilter[0],
       maxStrike: deferredStrikeFilter[1],
       strategy: strategyId,
+      newestFilter: customFilters[customFilters.length - 1]?.id ?? '',
     };
     snapshotRef.current = snapshot;
     scanStateRef.current = {

@@ -53,6 +53,8 @@ export interface AppliedSettings {
   minStrike: number;
   maxStrike: number;
   strategy: string;
+  /** Id of the most recently added custom filter, or "" when there are none. */
+  newestFilter: string;
 }
 
 export type WantedSettings = Partial<AppliedSettings>;

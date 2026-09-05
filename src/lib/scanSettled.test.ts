@@ -62,6 +62,7 @@ describe('waiting for a filter to reach the table', () => {
     minStrike: 265,
     maxStrike: 10000,
     strategy: 'covered-call',
+    newestFilter: '',
   };
 
   it('is satisfied when nothing in particular was asked for', () => {
@@ -94,5 +95,28 @@ describe('waiting for a filter to reach the table', () => {
 
   it('checks every key it was given, not just the first', () => {
     expect(settingsApplied(applied, { minStrike: 265, delta: 0.3 })).toBe(false);
+  });
+});
+
+describe('waiting for a custom filter to reach the table', () => {
+  const applied = {
+    ticker: 'AAPL',
+    capital: 100000,
+    delta: 1,
+    minStrike: 367.97,
+    maxStrike: 600,
+    strategy: 'covered-call',
+    newestFilter: '',
+  };
+
+  it('waits until the filter just added is the one in force', () => {
+    // Otherwise the screen is read as it was before the filter, and the model
+    // answers about rows the filter removes.
+    expect(settingsApplied(applied, { newestFilter: 'f123' })).toBe(false);
+    expect(settingsApplied({ ...applied, newestFilter: 'f123' }, { newestFilter: 'f123' })).toBe(true);
+  });
+
+  it('is not satisfied by some other filter having landed', () => {
+    expect(settingsApplied({ ...applied, newestFilter: 'other' }, { newestFilter: 'f123' })).toBe(false);
   });
 });
