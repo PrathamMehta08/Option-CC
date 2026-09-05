@@ -97,12 +97,16 @@ describe('describeScreen', () => {
     );
   });
 
-  it('warns when the capital covers nothing', () => {
+  it('warns when the capital covers nothing, without implying an empty screen', () => {
     const text = describeScreen(
       state({ data: response({ affordableCount: 0, minCapitalRequired: 32496 }) })
     );
-    expect(text).toContain('covers 0 contracts');
+    expect(text).toContain('affords none of them');
     expect(text).toContain('$32,496');
+    // "covers 0 contracts" on its own was read back to the user as "the screen
+    // shows no rows", which is a different and wrong statement: the rows are
+    // there and their returns are real.
+    expect(text).toMatch(/rows are still listed/);
   });
 
   it('lists active filters and computed columns', () => {

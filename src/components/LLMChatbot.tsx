@@ -13,6 +13,8 @@ import type { StrategyId } from '@/lib/strategies';
 import type { MobileView } from '@/components/screener/ResultsTable';
 import type { ScreenedOption } from '@/lib/optionChain';
 import { STARTERS } from '@/lib/assistant/starters';
+import { describeToolCall } from '@/lib/assistant/toolChip';
+import { Markdown } from '@/components/Markdown';
 
 interface LLMChatbotProps {
   /** Strategy name shown under the assistant title. */
@@ -38,6 +40,47 @@ interface LLMChatbotProps {
    * waits for a scan already on its way rather than reporting "nothing loaded".
    */
   readScreen: () => Promise<string>;
+}
+
+/**
+ * One line saying what the assistant did.
+ *
+ * Deliberately terse: the tool's own result string is written for the model —
+ * readScreen's is the entire screen summary — and printing it here restated a
+ * table the user was already looking at. Rejections are the exception, since
+ * there the message IS the point.
+ */
+function ToolChip({ invocation }: { invocation: ToolInvocation }) {
+  if (invocation.state !== 'result') {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-line bg-bg-3 p-2 text-xs text-fg-soft">
+        <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+        <span>Working…</span>
+      </div>
+    );
+  }
+  const chip = describeToolCall(
+    invocation.toolName,
+    invocation.args as Record<string, unknown>,
+    String(invocation.result ?? '')
+  );
+  return (
+    <div
+      className={cn(
+        'flex items-start gap-2 rounded-lg border p-2 text-xs',
+        chip.tone === 'warn'
+          ? 'border-warn/30 bg-warn/10 text-warn'
+          : 'border-line bg-bg-3 text-fg-soft'
+      )}
+    >
+      {chip.tone === 'warn' ? (
+        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+      ) : (
+        <span className="text-a1">✓</span>
+      )}
+      <span className="leading-relaxed">{chip.text}</span>
+    </div>
+  );
 }
 
 export default function LLMChatbot({
@@ -446,8 +489,15 @@ export default function LLMChatbot({
                   m.role === 'user' ? 'items-end max-w-[75%]' : 'items-start max-w-[90%] w-full'
                 )}>
                   {m.content && (
-                    <div className={`p-3 rounded-lg text-sm leading-relaxed ${m.role === 'user' ? 'bg-bg-3 text-fg rounded-tr-sm' : 'bg-bg-3 border border-line text-fg rounded-tl-sm'}`}>
-                      {m.content}
+                    <div
+                      className={cn(
+                        'rounded-lg p-3 text-sm leading-relaxed',
+                        m.role === 'user'
+                          ? 'bg-bg-3 text-fg rounded-tr-sm'
+                          : 'min-w-0 max-w-full bg-bg-3 border border-line text-fg rounded-tl-sm'
+                      )}
+                    >
+                      {m.role === 'user' ? m.content : <Markdown>{m.content}</Markdown>}
                     </div>
                   )}
                   {invocations?.map((inv) =>
@@ -458,26 +508,7 @@ export default function LLMChatbot({
                         <StockChart history={charts[inv.toolCallId]} />
                       </div>
                     ) : (
-                    <div key={inv.toolCallId} className="bg-bg-3 border border-line rounded-lg p-2 text-xs text-fg-soft flex items-center gap-2">
-                      {inv.state === 'result' ? (
-                        /^(Filter|Formula) rejected:/.test(String(inv.result)) ? (
-                          <>
-                            <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
-                            <span className="text-amber-500/90">{inv.result}</span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="text-fg-soft">✓</span>
-                            <span>{inv.result}</span>
-                          </>
-                        )
-                      ) : (
-                        <>
-                          <Loader2 className="w-3 h-3 animate-spin text-fg-soft" />
-                          <span>Running: {inv.toolName}…</span>
-                        </>
-                      )}
-                    </div>
+                    <ToolChip key={inv.toolCallId} invocation={inv} />
                     )
                   )}
                 </div>

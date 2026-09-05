@@ -1,0 +1,81 @@
+import { describe, it, expect } from 'vitest';
+import { describeToolCall } from './toolChip';
+
+/**
+ * A chip says what the assistant DID. The tool's own result string is written
+ * for the model — readScreen's is the whole screen summary — so printing it
+ * verbatim put a paragraph restating the results table under a tick.
+ */
+describe('what a tool call looks like to the user', () => {
+  it('never repeats the screen summary back at them', () => {
+    const summary =
+      'Underlying: NVIDIA Corporation (NVDA), last price $230.36. Strategy: Covered Calls. ' +
+      'Scan returned 220 contracts... 2026-09-09 (4d) $235 strike — premium $1.03';
+    const chip = describeToolCall('readScreen', {}, summary);
+    expect(chip.text).toBe('Read the screen');
+    expect(chip.text).not.toContain('NVIDIA');
+    expect(chip.text.length).toBeLessThan(30);
+  });
+
+  it('lists only the settings that were actually given', () => {
+    const chip = describeToolCall('applySettings', {
+      ticker: 'nvda',
+      capital: 20000,
+      delta: 0.3,
+      minMonths: 0,
+      maxMonths: 3,
+      minStrike: null,
+      maxStrike: null,
+      strategy: null,
+    });
+    expect(chip.text).toBe('Set NVDA, $20,000, 0.3 delta, 0–3 months');
+    // Nulls mean "left alone", so they must not appear as changes.
+    expect(chip.text).not.toMatch(/strike|covered|puts/i);
+  });
+
+  it('says so plainly when a call changed nothing', () => {
+    const allNull = {
+      ticker: null, capital: null, delta: null, minMonths: null,
+      maxMonths: null, minStrike: null, maxStrike: null, strategy: null,
+    };
+    expect(describeToolCall('applySettings', allNull).text).toBe('No settings changed');
+  });
+
+  it('surfaces a rejection verbatim, because there the message is the point', () => {
+    const rejection = 'Filter rejected: unknown field "rsi". Valid fields are the numeric columns.';
+    const chip = describeToolCall('addCustomFilter', { name: 'RSI' }, rejection);
+    expect(chip.tone).toBe('warn');
+    expect(chip.text).toBe(rejection);
+  });
+
+  it('warns when a chart could not be loaded', () => {
+    const chip = describeToolCall('showStockChart', { ticker: 'ZZZZ' }, 'Could not load a chart: not found');
+    expect(chip.tone).toBe('warn');
+  });
+
+  it('stays short for every tool, so a chain of calls stays scannable', () => {
+    const calls: [string, Record<string, unknown>][] = [
+      ['setTicker', { ticker: 'aapl' }],
+      ['setCapital', { capital: 25000 }],
+      ['setMonthsRange', { minMonths: 0, maxMonths: 3 }],
+      ['setDelta', { delta: 0.3 }],
+      ['setStrikeRange', { minStrike: 100, maxStrike: 200 }],
+      ['setSort', { key: 'annualizedReturn', direction: 'desc' }],
+      ['setStrategy', { strategy: 'cash-secured-put' }],
+      ['setResultsView', { view: 'cards' }],
+      ['addComputedColumn', { name: 'Score' }],
+      ['showStockChart', { ticker: 'nvda', range: '6mo' }],
+    ];
+    for (const [name, args] of calls) {
+      const chip = describeToolCall(name, args, 'Done');
+      expect(chip.tone).toBe('done');
+      expect(chip.text.length).toBeGreaterThan(0);
+      expect(chip.text.length).toBeLessThan(60);
+      expect(chip.text).not.toContain('\n');
+    }
+  });
+
+  it('upper-cases the ticker, however the model typed it', () => {
+    expect(describeToolCall('setTicker', { ticker: 'nvda' }).text).toBe('Ticker NVDA');
+  });
+});

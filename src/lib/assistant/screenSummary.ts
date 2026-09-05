@@ -54,10 +54,14 @@ export function describeScreen(s: ScreenState): string {
   );
 
   if (s.data.affordableCount === 0 && s.data.options.length > 0) {
+    // Spelled out against the row count, because "covers 0 contracts" on its
+    // own reads as "the screen is empty" — and was reported that way. The rows
+    // are there; they are just out of reach.
     lines.push(
-      `The capital covers 0 contracts; the cheapest needs $${Math.round(
-        s.data.minCapitalRequired
-      ).toLocaleString()}.`
+      `All ${s.visible.length} rows are still listed and their returns are real, ` +
+        `but the capital affords none of them: the cheapest needs $${Math.round(
+          s.data.minCapitalRequired
+        ).toLocaleString()}.`
     );
   }
 

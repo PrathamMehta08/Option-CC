@@ -83,7 +83,7 @@ export const TOOL_PARAMETERS = {
     strategy: z
       .enum(['covered-call', 'cash-secured-put'])
       .nullable()
-      .describe('Only when the user names calls or puts; otherwise null'),
+      .describe('Only when the user says which they want; otherwise null'),
   }),
 
   readScreen: z.object({}),
@@ -171,7 +171,7 @@ const DESCRIPTIONS: Record<ToolName, string> = {
     'Set SEVERAL screener settings in one call. ALWAYS use this instead of the individual setters when a request changes more than one thing — every separate call is another round trip that re-sends this whole toolset and can exhaust the rate limit mid-answer. Pass null for every field the user did not mention; those are left alone.',
 
   setStrategy:
-    'Switch between covered calls and cash-secured puts. The board for the ticker is already loaded, so this costs no refetch.',
+    'Switch between covered calls and cash-secured puts. ONLY when the user says which they want — never to work around an affordability or empty-result problem.',
 
   setResultsView:
     'Lay results out as a table or as cards on a phone. Use cards when presenting one contract to read rather than many to compare.',
