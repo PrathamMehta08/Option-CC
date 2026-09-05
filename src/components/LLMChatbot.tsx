@@ -33,6 +33,8 @@ interface LLMChatbotProps {
   /** Takes an updater too, so applySettings can move one end and keep the other. */
   setStrikeFilter: React.Dispatch<React.SetStateAction<[number, number]>>;
   addCustomFilter: (filter: CustomFilter) => void;
+  /** Drops filters and returns the id of the newest one left, or "". */
+  clearCustomFilters: (field?: string) => string;
   addComputedColumn: (input: { id: string; name: string; expression: string }) =>
     { ok: true; column: { name: string; source: string } } | { ok: false; error: string };
   setSortConfig: (config: {
@@ -116,6 +118,7 @@ export default function LLMChatbot({
   setDeltaMagnitude,
   setStrikeFilter,
   addCustomFilter,
+  clearCustomFilters,
   addComputedColumn,
   setSortConfig,
   setStrategy,
@@ -282,6 +285,17 @@ export default function LLMChatbot({
           if (maxStrike != null) want.maxStrike = maxStrike;
           done.push(`strikes $${minStrike ?? 'any'}-$${maxStrike ?? 'any'}`);
         }
+        // Taking filters off, which had no tool at all until a request to
+        // remove one was answered by adding another.
+        if (a.clearFilters === true) {
+          want.newestFilter = clearCustomFilters();
+          done.push('cleared filters');
+        } else if (a.removeFilterField != null) {
+          const field = String(a.removeFilterField);
+          want.newestFilter = clearCustomFilters(field);
+          done.push(`removed ${field} filter`);
+        }
+
         // A filter asked for in the same breath as the settings. Applied here
         // rather than left to a second call the model does not always make.
         if (a.filterField != null) {

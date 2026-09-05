@@ -25,6 +25,7 @@ import type { ScreenedOption } from '@/lib/optionChain';
 import type { ChainResponse } from '@/lib/chain';
 import { MAX_MONTHS, asMonthWindow, withMonthsFrom, withMonthsTo } from '@/lib/monthWindow';
 import {
+  boardReady,
   scanSettled,
   settingsApplied,
   type AppliedSettings,
@@ -467,8 +468,15 @@ export default function OptionAnalyzer() {
   // Bumped on every commit, so a caller can tell that at least one render has
   // happened since it changed something.
   const commitsRef = useRef(0);
+  const filtersRef = useRef(customFilters);
+  // Expirations are ticked a render after the chain lands, and the rows read a
+  // deferred copy of the ticks, so the board is briefly empty while perfectly
+  // healthy. Reading in that window reported "no contracts" over 83 matches.
+  const boardReadyRef = useRef(true);
   useEffect(() => {
     commitsRef.current += 1;
+    filtersRef.current = customFilters;
+    boardReadyRef.current = boardReady(allExpirations.length, deferredSelectedExps.length);
     appliedRef.current = {
       ticker: data?.ticker ?? '',
       capital: capitalNumber,
@@ -520,6 +528,19 @@ export default function OptionAnalyzer() {
      filteredOptions.length, customFilters, computedColumns]
   );
 
+  /**
+   * Drop custom filters — all of them, or only those touching one column.
+   * Returns the id of the newest filter left, so a caller can wait for the
+   * removal to actually reach the table before reading it back.
+   */
+  const clearCustomFilters = useCallback((field?: string) => {
+    const remaining = field
+      ? filtersRef.current.filter((f) => !f.conditions.some((c) => c.field === field))
+      : [];
+    setCustomFilters(remaining);
+    return remaining[remaining.length - 1]?.id ?? '';
+  }, []);
+
   /** The rows on screen, for spotting a contract the assistant named in prose. */
   const visibleOptions = useCallback(() => rowsRef.current, []);
 
@@ -567,7 +588,8 @@ export default function OptionAnalyzer() {
       if (scanSettled(scanStateRef.current, target)) {
         if (settleBy === Infinity) settleBy = Date.now() + SETTLE_WAIT_MS;
         const rendered = !changing || commitsRef.current > committedAtEntry;
-        if ((rendered && settingsApplied(appliedRef.current, want)) || Date.now() > settleBy) {
+        const ready = boardReadyRef.current;
+        if ((rendered && ready && settingsApplied(appliedRef.current, want)) || Date.now() > settleBy) {
           return;
         }
       }
@@ -1195,6 +1217,7 @@ export default function OptionAnalyzer() {
         setDeltaMagnitude={setDeltaMagnitude}
         setStrikeFilter={setStrikeFilter}
         addCustomFilter={(filter) => setCustomFilters(prev => [...prev.filter(f => f.id !== filter.id), filter])}
+        clearCustomFilters={clearCustomFilters}
         addComputedColumn={addComputedColumn}
         setSortConfig={setGlobalSortConfig}
         setStrategy={handleStrategyChange}

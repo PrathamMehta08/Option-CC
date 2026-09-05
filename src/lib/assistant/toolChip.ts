@@ -128,6 +128,10 @@ export function describeToolCall(
       if (args.strategy != null) {
         parts.push(args.strategy === 'covered-call' ? 'covered calls' : 'cash-secured puts');
       }
+      if (args.clearFilters === true) parts.push('filters cleared');
+      else if (args.removeFilterField != null) {
+        parts.push(`${args.removeFilterField} filter removed`);
+      }
       if (args.filterField != null) {
         const symbols: Record<string, string> = {
           gt: '>',

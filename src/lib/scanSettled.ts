@@ -73,3 +73,19 @@ export function settingsApplied(applied: AppliedSettings, want: WantedSettings):
     return String(current).trim().toUpperCase() === String(wanted).trim().toUpperCase();
   });
 }
+
+/**
+ * Whether the expiration checkboxes have caught up with the loaded chain.
+ *
+ * They start empty and are filled a render after the chain arrives — and the
+ * rows read a deferred copy of them, so later still. In that window the board
+ * genuinely holds zero rows while being perfectly healthy, and a read that
+ * lands there is told the screen is empty. It reported exactly that for a
+ * filter with 83 matches sitting behind it.
+ *
+ * A board offering expirations with none selected is mid-load, not empty. One
+ * offering none has nothing to wait for.
+ */
+export function boardReady(offered: number, selected: number): boolean {
+  return offered === 0 || selected > 0;
+}

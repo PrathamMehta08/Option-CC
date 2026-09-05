@@ -172,3 +172,20 @@ describe('the filter travels as flat nullable scalars', () => {
     expect(parsed.success).toBe(true);
   });
 });
+
+describe('removing a filter is expressible', () => {
+  it('accepts a request to drop one column, or all of them', () => {
+    for (const args of [{ removeFilterField: 'iv' }, { clearFilters: true }]) {
+      expect(TOOL_PARAMETERS.applySettings.safeParse(args).success).toBe(true);
+    }
+  });
+
+  it('accepts nulls for both, since the model sends every key', () => {
+    const parsed = TOOL_PARAMETERS.applySettings.safeParse({
+      ticker: 'AAPL',
+      clearFilters: null,
+      removeFilterField: null,
+    });
+    expect(parsed.success).toBe(true);
+  });
+});

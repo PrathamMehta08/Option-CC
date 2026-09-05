@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scanSettled, settingsApplied, type ScanState } from './scanSettled';
+import { boardReady, scanSettled, settingsApplied, type ScanState } from './scanSettled';
 
 const state = (over: Partial<ScanState> = {}): ScanState => ({
   loading: false,
@@ -118,5 +118,23 @@ describe('waiting for a custom filter to reach the table', () => {
 
   it('is not satisfied by some other filter having landed', () => {
     expect(settingsApplied({ ...applied, newestFilter: 'other' }, { newestFilter: 'f123' })).toBe(false);
+  });
+});
+
+describe('waiting for the expiration checkboxes to catch up', () => {
+  it('is not ready while expirations are offered but none are ticked', () => {
+    // The reported miss: 83 contracts matched, and the assistant was told the
+    // screen was empty because it read inside this window.
+    expect(boardReady(3, 0)).toBe(false);
+  });
+
+  it('is ready once any are ticked', () => {
+    expect(boardReady(3, 1)).toBe(true);
+    expect(boardReady(3, 3)).toBe(true);
+  });
+
+  it('is ready when the chain offers no expirations at all', () => {
+    // Nothing is coming, so waiting would just burn the timeout.
+    expect(boardReady(0, 0)).toBe(true);
   });
 });

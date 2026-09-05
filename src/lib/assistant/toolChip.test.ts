@@ -197,3 +197,37 @@ describe('what a surviving warning says', () => {
     );
   });
 });
+
+/**
+ * Filters could be added and never taken away. "remove iv filter" was answered
+ * by adding `iv >= 0`, which removes nothing — so the chip has to be able to
+ * say that a filter came off, not just that one went on.
+ */
+describe('taking filters off', () => {
+  it('says a named column filter was removed', () => {
+    const chip = describeToolCall('applySettings', { removeFilterField: 'iv' });
+    expect(chip.text).toBe('Set iv filter removed');
+  });
+
+  it('says when all of them went', () => {
+    expect(describeToolCall('applySettings', { clearFilters: true }).text).toBe(
+      'Set filters cleared'
+    );
+  });
+
+  it('does not claim a removal when the flag is false', () => {
+    expect(describeToolCall('applySettings', { clearFilters: false, ticker: 'nvda' }).text).toBe(
+      'Set NVDA'
+    );
+  });
+
+  it('reports a removal and an addition in the same call', () => {
+    const chip = describeToolCall('applySettings', {
+      removeFilterField: 'iv',
+      filterField: 'openInterest',
+      filterOp: 'gt',
+      filterValue: 500,
+    });
+    expect(chip.text).toBe('Set iv filter removed, filter openInterest > 500');
+  });
+});
