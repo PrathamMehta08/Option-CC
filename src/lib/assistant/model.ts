@@ -1,5 +1,6 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 
 /**
  * Which LLM the assistant talks to.
@@ -89,6 +90,26 @@ function isOpenAiProper(baseUrl = llmBaseUrl()): boolean {
   }
 }
 
+/** Whether this is Google's API, by either of its two endpoints. */
+export function isGemini(baseUrl = llmBaseUrl()): boolean {
+  try {
+    return new URL(baseUrl).hostname.endsWith('googleapis.com');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Gemini's own endpoint, whichever of its two forms was configured.
+ *
+ * The native provider wants `.../v1beta`; the OpenAI shim lives one level
+ * deeper at `.../v1beta/openai/`. Accepting either means a base URL copied
+ * from Google's own OpenAI-compatibility docs still works.
+ */
+function geminiBaseUrl(baseUrl = llmBaseUrl()): string {
+  return baseUrl.replace(/\/openai\/?$/, '').replace(/\/$/, '');
+}
+
 /**
  * Build the provider. Everything is resolved now, not at import.
  *
@@ -106,6 +127,17 @@ export function createLlm(apiKey = llmApiKey()) {
   const baseURL = llmBaseUrl();
   // A local server ignores the key, but the SDK insists on a string.
   const key = apiKey ?? 'local';
+
+  // Gemini gets its own provider rather than the OpenAI shim. Gemini 3 models
+  // think before they answer, and attach a `thought_signature` to every
+  // function call that has to be echoed back with the tool result. The shim
+  // carries it in a non-standard `extra_content` field which the SDK does not
+  // round-trip, so the FIRST call succeeded and the follow-up carrying the
+  // result was rejected: "Function call is missing a thought_signature".
+  // Only the native provider handles that.
+  if (isGemini(baseURL)) {
+    return createGoogleGenerativeAI({ baseURL: geminiBaseUrl(baseURL), apiKey: key });
+  }
 
   if (isOpenAiProper(baseURL)) {
     return createOpenAI({ baseURL, apiKey: key });

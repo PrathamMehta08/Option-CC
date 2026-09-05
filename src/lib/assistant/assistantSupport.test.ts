@@ -136,3 +136,63 @@ describe('telling the model what its chart shows', () => {
     expect(describeHistory(history)).toMatch(/not live/i);
   });
 });
+
+describe('surfacing what the provider actually said', () => {
+  // "Bad Request" on its own is as useless as the SDK placeholder was. The real
+  // body named the bug outright: a missing thought_signature.
+  it('digs the reason out of an OpenAI-shaped body', () => {
+    const msg = describeAssistantError({
+      statusCode: 400,
+      message: 'Bad Request',
+      responseBody: JSON.stringify({ error: { message: 'Function call is missing a thought_signature' } }),
+    });
+    expect(msg).toContain('thought_signature');
+    expect(msg).not.toBe('The assistant failed: Bad Request');
+  });
+
+  it('digs it out of Google\u2019s array-wrapped body too', () => {
+    const msg = describeAssistantError({
+      statusCode: 400,
+      message: 'Bad Request',
+      responseBody: JSON.stringify([{ error: { code: 400, message: 'Unsupported field', status: 'INVALID_ARGUMENT' } }]),
+    });
+    expect(msg).toContain('Unsupported field');
+  });
+
+  it('reads it from a parsed data field when the SDK provides one', () => {
+    const msg = describeAssistantError({
+      statusCode: 400,
+      message: 'Bad Request',
+      data: { error: { message: 'tools[0] is invalid' } },
+    });
+    expect(msg).toContain('tools[0] is invalid');
+  });
+
+  it('truncates a wall of text rather than filling the chat with it', () => {
+    const msg = describeAssistantError({
+      statusCode: 400,
+      message: 'Bad Request',
+      responseBody: JSON.stringify({ error: { message: 'x'.repeat(2000) } }),
+    });
+    expect(msg.length).toBeLessThan(500);
+    expect(msg).toContain('…');
+  });
+
+  it('falls back gracefully when the body is not JSON or not helpful', () => {
+    expect(describeAssistantError({ statusCode: 400, message: 'Bad Request', responseBody: '<html>502</html>' }))
+      .toContain('502');
+    expect(describeAssistantError({ statusCode: 400, message: 'Bad Request' }))
+      .toBe('The assistant failed: Bad Request');
+  });
+
+  it('does not let a body override the specific diagnoses', () => {
+    // A rate limit stays a rate limit, with its wait time.
+    const msg = describeAssistantError({
+      statusCode: 429,
+      message: 'Rate limit reached. Please try again in 5s.',
+      responseBody: JSON.stringify({ error: { message: 'quota' } }),
+    });
+    expect(msg).toMatch(/rate limit/i);
+    expect(msg).toContain('5s');
+  });
+});

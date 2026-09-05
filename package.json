@@ -14,6 +14,7 @@
     "llm:check": "tsx evals/check.ts"
   },
   "dependencies": {
+    "@ai-sdk/google": "^1.2.22",
     "@ai-sdk/openai": "^1.3.24",
     "@ai-sdk/openai-compatible": "^0.2.16",
     "@ai-sdk/react": "^1.2.12",

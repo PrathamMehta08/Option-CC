@@ -81,7 +81,45 @@ export function describeAssistantError(error: unknown): string {
     return `Could not reach ${provider}. If it is a local model server, check it is running at LLM_BASE_URL.`;
   }
 
+  // Anything unrecognised: hand over the provider's OWN complaint, not just the
+  // HTTP status. "Bad Request" alone is as useless as the SDK's "An error
+  // occurred." was — the actual body said "Function call is missing a
+  // thought_signature", which named the bug outright.
+  const detail = providerComplaint(e);
+  if (detail && detail !== message) {
+    return `${provider} rejected the request: ${detail}`;
+  }
   return message
     ? `The assistant failed: ${message}`
     : 'The assistant failed for an unknown reason.';
+}
+
+/**
+ * The human-readable reason out of a provider's error body.
+ *
+ * Providers wrap it differently — OpenAI-style `{error:{message}}`, Google's
+ * array-of-one of the same — so this digs rather than assuming a shape, and
+ * gives up quietly rather than guessing.
+ */
+function providerComplaint(e: ProviderErrorish): string | null {
+  const fromData = e.data?.error?.message;
+  if (typeof fromData === 'string' && fromData.trim()) return trim(fromData);
+
+  if (typeof e.responseBody !== 'string') return null;
+  try {
+    const parsed: unknown = JSON.parse(e.responseBody);
+    const first = Array.isArray(parsed) ? parsed[0] : parsed;
+    const msg = (first as { error?: { message?: unknown } })?.error?.message;
+    if (typeof msg === 'string' && msg.trim()) return trim(msg);
+  } catch {
+    // Not JSON. The raw body is still better than nothing, if it is short.
+    if (e.responseBody.length < 300) return trim(e.responseBody);
+  }
+  return null;
+}
+
+/** Long enough to be diagnostic, short enough to sit in a chat bubble. */
+function trim(text: string): string {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  return clean.length > 400 ? `${clean.slice(0, 400)}…` : clean;
 }
