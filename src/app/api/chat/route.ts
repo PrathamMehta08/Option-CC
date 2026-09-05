@@ -1,5 +1,5 @@
 import { streamText } from 'ai';
-import { createLlm, LLM_MODEL, isAssistantConfigured } from '@/lib/assistant/model';
+import { createLlm, llmModel, isAssistantConfigured } from '@/lib/assistant/model';
 import { SYSTEM_PROMPT } from '@/lib/assistant/prompt';
 import { assistantTools } from '@/lib/assistant/tools';
 import { describeAssistantError } from '@/lib/assistant/errors';
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     const { messages } = await req.json();
 
     const result = streamText({
-      model: createLlm()(LLM_MODEL),
+      model: createLlm()(llmModel()),
       system: SYSTEM_PROMPT,
       messages,
       tools: assistantTools,

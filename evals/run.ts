@@ -9,14 +9,15 @@
  * touches Yahoo or any other market-data API — no chain data is needed to ask
  * the model what tool it would call.
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generateText, type CoreMessage } from 'ai';
-import { createLlm, LLM_MODEL, isAssistantConfigured } from '@/lib/assistant/model';
+import { createLlm, llmModel, isAssistantConfigured } from '@/lib/assistant/model';
 import { SYSTEM_PROMPT } from '@/lib/assistant/prompt';
 import { assistantTools } from '@/lib/assistant/tools';
+import { loadEnvLocal } from './env';
 import { grade, validateCall, describeExpectation, describeActual } from './grade';
 import type {
   ActualCall,
@@ -50,21 +51,6 @@ const MAX_RETRIES = 8;
 const MAX_STEPS = 5;
 
 // ---------------------------------------------------------------- environment
-
-/** Load .env.local the way Next does, so the harness needs no extra setup. */
-function loadEnvLocal() {
-  for (const file of ['.env.local', '.env']) {
-    const path = join(ROOT, file);
-    if (!existsSync(path)) continue;
-    for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
-      const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/i);
-      if (!match) continue;
-      const [, key, rawValue] = match;
-      if (process.env[key]) continue;
-      process.env[key] = rawValue.replace(/^["']|["']$/g, '');
-    }
-  }
-}
 
 // ------------------------------------------------------------------- cli args
 
@@ -244,7 +230,7 @@ async function callModel(messages: CoreMessage[], budget: TokenBudget) {
     const reservation = await budget.reserve();
     try {
       const result = await generateText({
-        model: llm(LLM_MODEL),
+        model: llm(llmModel()),
         system: SYSTEM_PROMPT,
         messages,
         tools: assistantTools,
@@ -478,7 +464,7 @@ async function main() {
   const startedAt = new Date().toISOString();
   console.log(
     `\nRunning ${BOLD}${cases.length}${RESET} case${cases.length === 1 ? '' : 's'} ` +
-      `against ${BOLD}${LLM_MODEL}${RESET} (concurrency ${concurrency}, temperature 0)\n` +
+      `against ${BOLD}${llmModel()}${RESET} (concurrency ${concurrency}, temperature 0)\n` +
       `${DIM}~${estimatedTokens.toLocaleString()} tokens at ~${budget.perRequestEstimate} a call, ` +
       `paced to ${tpm.toLocaleString()}/min — roughly ${estimatedMinutes} min.${RESET}\n`
   );
@@ -543,7 +529,7 @@ async function main() {
   const report: RunReport = {
     startedAt,
     finishedAt: new Date().toISOString(),
-    model: LLM_MODEL,
+    model: llmModel(),
     systemPromptHash: createHash('sha256').update(SYSTEM_PROMPT).digest('hex').slice(0, 12),
     toolsHash: createHash('sha256')
       .update(JSON.stringify(Object.entries(assistantTools).map(([n, t]) => [n, t.description])))

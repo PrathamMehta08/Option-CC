@@ -79,10 +79,11 @@ DeepSeek, and for a model running on your own machine through Ollama or LM Studi
 Two things the assistant needs from whatever you point it at:
 
 - **Tool calling.** Without it the model can talk but cannot drive the app.
-- **Room in the rate limit.** One multi-step turn costs roughly 7,000 tokens, because
-  every step re-sends the system prompt and the tool schemas. A cap of 8,000 tokens a
-  minute — Groq's free tier — therefore fits about one turn a minute, and the assistant
-  will tell you so rather than failing silently.
+- **Room in the rate limit.** One multi-step turn costs about 9,000 tokens, because
+  every step re-sends the system prompt and the tool schemas. That is more than Groq's
+  free tier allows in a minute, so on it a turn with several steps can run out partway
+  — the assistant says so rather than failing silently. `npm run llm:check` measures
+  the number for whatever you have configured.
 
 Nothing hosted is unlimited: free tiers are rate-limited, credit-limited, or both. A
 local model through Ollama is the only genuinely uncapped option, paid for in hardware
@@ -106,6 +107,20 @@ coercions, error messages and screen summary. For a coverage report:
 ```bash
 npm run test:coverage
 ```
+
+### Checking the model works
+
+Switching provider is cheap; discovering mid-conversation that the new one cannot
+do tool calling is not. One request with the real tool schemas, against whatever
+`.env.local` currently points at:
+
+```bash
+npm run llm:check
+```
+
+It reports the provider, whether tool calling works, which call the model chose,
+and what a full turn will cost — so you can compare that against the provider’s
+tokens-per-minute limit before relying on it.
 
 ### Evaluating the assistant
 

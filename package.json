@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "eval": "tsx evals/run.ts"
+    "eval": "tsx evals/run.ts",
+    "llm:check": "tsx evals/check.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.3.24",
