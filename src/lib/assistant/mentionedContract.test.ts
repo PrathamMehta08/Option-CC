@@ -93,3 +93,33 @@ describe('finding the contract an answer names', () => {
     expect(findMentionedContract('at $ 330 it caps upside', rows)?.strike).toBe(330);
   });
 });
+
+describe('typographic punctuation in model prose', () => {
+  const shared = [row(300, '2027-03-19'), row(300, '2026-12-18')];
+
+  it('matches a date written with non-breaking hyphens', () => {
+    // The reported miss, verbatim: the model wrote U+2011 between the parts,
+    // so an exact match on the ISO date the screen gave it failed and no card
+    // appeared for a contract the answer named outright.
+    const answer = 'The leading contract is the 2027\u201103\u201119 $300 covered\u2011call.';
+    expect(answer.includes('2027-03-19')).toBe(false);
+    expect(findMentionedContract(answer, shared)?.expiration).toBe('2027-03-19');
+  });
+
+  it('handles en dashes, em dashes and minus signs alike', () => {
+    for (const dash of ['\u2013', '\u2014', '\u2212', '\uFF0D']) {
+      const answer = `the 2027${dash}03${dash}19 $300 strike`;
+      expect(findMentionedContract(answer, shared)?.expiration).toBe('2027-03-19');
+    }
+  });
+
+  it('handles a non-breaking space before the amount', () => {
+    expect(findMentionedContract('the 2027-03-19 $\u00A0300 strike', shared)?.expiration).toBe(
+      '2027-03-19'
+    );
+  });
+
+  it('still abstains when the date is genuinely absent', () => {
+    expect(findMentionedContract('the $300 strike', shared)).toBeNull();
+  });
+});

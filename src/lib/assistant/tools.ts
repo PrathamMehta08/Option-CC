@@ -12,9 +12,8 @@ import { FORMULA_FUNCTIONS } from '@/lib/formula';
  * the shipped route drifted underneath them.
  */
 
-// Free-form strings let the model answer "descending" where the UI expects
-// "desc", silently producing a no-op sort. Enums make the provider conform.
-export const SORT_KEY = z.enum([...NUMERIC_FIELDS, 'expiration', 'returnPct']);
+/** The columns that always exist, for the sort tool's description. */
+export const FIXED_SORT_KEYS = [...NUMERIC_FIELDS, 'expiration', 'returnPct'] as const;
 
 export const SORT_DIRECTION = z.enum(['asc', 'desc']);
 
@@ -24,7 +23,18 @@ export const SORT_DIRECTION = z.enum(['asc', 'desc']);
  */
 export const TOOL_PARAMETERS = {
   setSort: z.object({
-    key: SORT_KEY.describe('The column to sort by'),
+    // A plain string, NOT an enum. addComputedColumn creates columns with
+    // ids the model chooses, and an enum fixed at build time can never contain
+    // them — so sorting by a column the assistant had just added was rejected
+    // outright by the provider. The app validates the key instead and says
+    // which ones exist when it does not recognise one.
+    key: z
+      .string()
+      .describe(
+        'The column to sort by: one of ' +
+          FIXED_SORT_KEYS.join(', ') +
+          ', or the id of a computed column you added'
+      ),
     direction: SORT_DIRECTION.describe('Sort direction'),
   }),
 
@@ -144,7 +154,7 @@ export function isToolName(value: string): value is ToolName {
 /** Human-facing descriptions, kept beside the schemas they document. */
 const DESCRIPTIONS: Record<ToolName, string> = {
   setSort:
-    'Sort the table by a column. Superlatives are sorts: "cheapest" is lastPrice asc, "highest yield" is annualizedReturn desc.',
+    'Sort the table by a column. Superlatives are sorts: "cheapest" is lastPrice asc, "highest yield" is annualizedReturn desc. addComputedColumn already sorts by the column it creates, so it needs no setSort afterwards.',
 
   readScreen:
     'Read what is on screen: company name and last price, the active strategy, how many contracts the scan returned and how many are showing, every filter and the sort, and the top rows. The ONLY tool that returns data — call it before answering anything about actual numbers. It reports the scan already loaded, so after setTicker a fresh scan takes a moment and may need a second read.',

@@ -97,3 +97,31 @@ describe('the contract card', () => {
     expect(chip.tone).toBe('warn');
   });
 });
+
+describe('strikes given as a percentage of spot', () => {
+  it('says what was asked for, not a stray zero beside it', () => {
+    // Reported: "Set AAPL, strikes $0–$500" for a request that asked for 115%
+    // of the price. The model sent a throwaway minStrike of 0 next to the
+    // percentage, and the chip reported the zero.
+    const chip = describeToolCall('applySettings', {
+      ticker: 'AAPL',
+      minStrike: 0,
+      maxStrike: 500,
+      minStrikePctOfSpot: 115,
+      maxStrikePctOfSpot: null,
+    });
+    expect(chip.text).toBe('Set AAPL, strikes 115% of spot–$500');
+    expect(chip.text).not.toContain('$0');
+  });
+
+  it('still reports plain dollar bounds when no percentage is given', () => {
+    const chip = describeToolCall('applySettings', { minStrike: 100, maxStrike: 200 });
+    expect(chip.text).toBe('Set strikes $100–$200');
+  });
+
+  it('says "any" for an edge that was left alone', () => {
+    expect(describeToolCall('applySettings', { maxStrike: 500 }).text).toBe(
+      'Set strikes any–$500'
+    );
+  });
+});

@@ -12,10 +12,11 @@ import type { ScreenedOption } from '@/lib/optionChain';
  * indicated. A wrong card is worse than no card, because it looks authoritative.
  */
 export function findMentionedContract(
-  text: string,
+  raw: string,
   rows: ScreenedOption[]
 ): ScreenedOption | null {
-  if (!text || rows.length === 0) return null;
+  if (!raw || rows.length === 0) return null;
+  const text = normalizePunctuation(raw);
 
   // Dollar figures that could be a strike. Commas are stripped so "$1,250"
   // reads as 1250; a capital of "$100,000" simply will not match any strike.
@@ -41,6 +42,19 @@ export function findMentionedContract(
 
   // Still ambiguous. Say nothing rather than pick.
   return null;
+}
+
+/**
+ * Model prose is full of typographic punctuation. It wrote the date as
+ * "2027‑03‑19" with U+2011 non-breaking hyphens, so an exact match on the ISO
+ * date the screen gave it failed and no card was shown for a contract the
+ * answer named outright. Dashes, minus signs and non-breaking spaces are folded
+ * to their ASCII equivalents before anything is matched.
+ */
+function normalizePunctuation(text: string): string {
+  return text
+    .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, '-')
+    .replace(/[\u00A0\u2007\u202F]/g, ' ');
 }
 
 /** Whether the text refers to this expiration, by ISO date or by month and year. */

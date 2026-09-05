@@ -501,15 +501,19 @@ export default function OptionAnalyzer() {
    * budget of 8,000 tokens a minute that wasted step is often the one that
    * runs out. Waiting costs a second and saves a request.
    */
-  const readScreen = useCallback(async () => {
+  const awaitScan = useCallback(async () => {
     const deadline = Date.now() + SCAN_WAIT_MS;
     while (Date.now() < deadline) {
       const { loading: busy, ready, wanted } = scanStateRef.current;
-      if (!busy && (ready || !wanted)) break;
+      if (!busy && (ready || !wanted)) return;
       await new Promise((r) => setTimeout(r, 150));
     }
-    return snapshotRef.current();
   }, []);
+
+  const readScreen = useCallback(async () => {
+    await awaitScan();
+    return snapshotRef.current();
+  }, [awaitScan]);
 
   return (
     <div className="min-h-screen font-sans antialiased text-fg selection:bg-zinc-700 pb-28 md:pb-16">
@@ -1132,6 +1136,7 @@ export default function OptionAnalyzer() {
         filterSummary={filterSummary}
         onSoloModeChange={setSoloMode}
         currentPrice={currentPrice}
+        awaitScan={awaitScan}
         cardColumns={cardColumns}
         computedColumns={computedColumns}
         readScreen={readScreen}

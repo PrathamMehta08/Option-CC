@@ -44,8 +44,23 @@ export function describeToolCall(
       if (args.minMonths != null || args.maxMonths != null) {
         parts.push(`${args.minMonths ?? 'any'}–${args.maxMonths ?? 'any'} months`);
       }
-      if (args.minStrike != null || args.maxStrike != null) {
-        parts.push(`strikes ${money(args.minStrike ?? 0)}–${money(args.maxStrike ?? 0)}`);
+      // A percentage takes precedence in the handler, so it does here too —
+      // the chip said "strikes $0–$500" for a request that asked for 115% of
+      // spot, which is not what happened and not what was asked.
+      const lowStrike =
+        args.minStrikePctOfSpot != null
+          ? `${args.minStrikePctOfSpot}% of spot`
+          : args.minStrike != null
+            ? money(args.minStrike)
+            : null;
+      const highStrike =
+        args.maxStrikePctOfSpot != null
+          ? `${args.maxStrikePctOfSpot}% of spot`
+          : args.maxStrike != null
+            ? money(args.maxStrike)
+            : null;
+      if (lowStrike || highStrike) {
+        parts.push(`strikes ${lowStrike ?? 'any'}–${highStrike ?? 'any'}`);
       }
       if (args.strategy != null) {
         parts.push(args.strategy === 'covered-call' ? 'covered calls' : 'cash-secured puts');

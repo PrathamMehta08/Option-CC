@@ -50,6 +50,8 @@ interface LLMChatbotProps {
   onSoloModeChange: (solo: boolean) => void;
   /** The loaded underlying's price, for strikes given as a % of it. */
   currentPrice: () => number;
+  /** Resolves once an in-flight scan has settled. */
+  awaitScan: () => Promise<void>;
   /** Column formatting, so a card in the chat matches the table. */
   cardColumns: Record<string, Column>;
   computedColumns: ComputedColumn[];
@@ -119,6 +121,7 @@ export default function LLMChatbot({
   filterSummary,
   onSoloModeChange,
   currentPrice,
+  awaitScan,
   cardColumns,
   computedColumns,
   readScreen,
@@ -206,15 +209,23 @@ export default function LLMChatbot({
           setDeltaMagnitude(magnitude);
           done.push(`delta ${magnitude}`);
         }
-        // Percentages resolve against the price the app already holds, so a
-        // request like "from 115% of spot" costs no extra round trip.
+        // A percentage has to resolve against the price of the ticker being
+        // SET, not the one that happened to be loaded — "AAPL, strikes from
+        // 115% of its price" arrives in the same call as the ticker change, so
+        // reading the price now would use the previous stock's. Wait for the
+        // scan first, and only when a percentage was actually given.
+        const wantsPct = a.minStrikePctOfSpot != null || a.maxStrikePctOfSpot != null;
+        if (wantsPct) await awaitScan();
         const spot = currentPrice();
         const fromPct = (pct: unknown) =>
           pct != null && spot > 0 ? Number(((Number(pct) / 100) * spot).toFixed(2)) : null;
         const minFromPct = fromPct(a.minStrikePctOfSpot);
         const maxFromPct = fromPct(a.maxStrikePctOfSpot);
-        const minStrike = a.minStrike != null ? Number(a.minStrike) : minFromPct;
-        const maxStrike = a.maxStrike != null ? Number(a.maxStrike) : maxFromPct;
+        // A percentage wins over a plain number on the same edge: it is the more
+        // specific request, and the model tends to send a throwaway 0 alongside
+        // it, which silently replaced the bound the user actually asked for.
+        const minStrike = minFromPct ?? (a.minStrike != null ? Number(a.minStrike) : null);
+        const maxStrike = maxFromPct ?? (a.maxStrike != null ? Number(a.maxStrike) : null);
 
         if (minStrike != null || maxStrike != null) {
           // Only one end may be given, so the other keeps whatever it has
@@ -273,9 +284,17 @@ export default function LLMChatbot({
       case 'setStrikeRange':
         setStrikeFilter([Number(a.minStrike), Number(a.maxStrike)]);
         return `Strike range set to $${a.minStrike}–$${a.maxStrike}`;
-      case 'setSort':
-        setSortConfig(args as never);
-        return `Sorted by ${a.key} ${a.direction}`;
+      case 'setSort': {
+        // The key is a free string in the schema, because a computed column's
+        // id cannot be in a build-time enum. So it is checked here, against the
+        // columns that actually exist right now.
+        const key = String(a.key);
+        if (!(key in cardColumns)) {
+          return `No column "${key}". Sortable columns: ${Object.keys(cardColumns).join(', ')}.`;
+        }
+        setSortConfig({ key, direction: a.direction === 'asc' ? 'asc' : 'desc' } as never);
+        return `Sorted by ${key} ${a.direction}`;
+      }
       case 'setStrategy':
         setStrategy(String(a.strategy) as StrategyId);
         return String(a.strategy) === 'covered-call'
