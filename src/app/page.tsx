@@ -33,6 +33,12 @@ import {
 } from '@/lib/scanSettled';
 import { screenLoadedChain } from '@/lib/screen';
 import { matchesFilter, describeFilter, filterFields, type CustomFilter } from '@/lib/filters';
+import {
+  NO_STRIKE_PCT,
+  nextStrikePct,
+  strikeRangeForBoard,
+  type StrikePct,
+} from '@/lib/strikeIntent';
 import { compileFormula, type ComputedColumn } from '@/lib/formula';
 import { describeScreen } from '@/lib/assistant/screenSummary';
 
@@ -100,6 +106,10 @@ export default function OptionAnalyzer() {
   // puts negative) when it builds the delta window.
   const [deltaMagnitude, setDeltaMagnitude] = useState(strategy.defaults.deltaMagnitude);
   const [strikeFilter, setStrikeFilter] = useState<[number, number]>(strategy.defaults.strikeRange);
+  // A strike bound the assistant gave as a percentage of the price is a rule
+  // that outlives the stock it was set on: switching tickers re-resolves it
+  // against the new price instead of carrying the old stock''s dollars over.
+  const [strikePct, setStrikePct] = useState<StrikePct>(NO_STRIKE_PCT);
   const [selectedExps, setSelectedExps] = useState<string[]>([]);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [customFilters, setCustomFilters] = useState<CustomFilter[]>([]);
@@ -117,14 +127,20 @@ export default function OptionAnalyzer() {
   // close over its setter.
   const [activeKeypad, setActiveKeypad] = useState<'minMonths' | 'maxMonths' | 'delta' | 'strikeMin' | 'strikeMax' | 'expirations' | null>(null);
   const handleCloseKeypad = useCallback(() => setActiveKeypad(null), []);
-  const handleStrikeMinChange = useCallback(
-    (v: number) => setStrikeFilter((prev) => [v, Math.max(prev[1], v)]),
-    []
-  );
-  const handleStrikeMaxChange = useCallback(
-    (v: number) => setStrikeFilter((prev) => [Math.min(prev[0], v), v]),
-    []
-  );
+  // Touching a strike field by hand names an actual price, so it retires the
+  // standing "115% of spot" rule for that edge. The rule is the assistant''s.
+  const handleStrikeMinChange = useCallback((v: number) => {
+    setStrikePct((prev) => ({ ...prev, min: null }));
+    setStrikeFilter((prev) => [v, Math.max(prev[1], v)]);
+  }, []);
+  const handleStrikeMaxChange = useCallback((v: number) => {
+    setStrikePct((prev) => ({ ...prev, max: null }));
+    setStrikeFilter((prev) => [Math.min(prev[0], v), v]);
+  }, []);
+  const handleStrikeRangePick = useCallback((range: [number, number]) => {
+    setStrikePct(NO_STRIKE_PCT);
+    setStrikeFilter(range);
+  }, []);
 
   /**
    * Every route into the month window goes through these, so it can never end
@@ -322,7 +338,8 @@ export default function OptionAnalyzer() {
   const [seenBoard, setSeenBoard] = useState('');
   if (strikeBounds && seenBoard !== boardKey) {
     setSeenBoard(boardKey);
-    setStrikeFilter(strikeBounds);
+    // A standing percentage is re-resolved here, against THIS board''s price.
+    setStrikeFilter(strikeRangeForBoard(strikeBounds, strikePct, chain?.currentPrice ?? 0));
   }
 
   const filteredOptions = useMemo(() => {
@@ -432,6 +449,7 @@ export default function OptionAnalyzer() {
       deltaSign,
       deltaMagnitude,
       strikeFilter,
+      strikePct,
       selectedExpirations: selectedExps,
       customFilters,
       computedColumns,
@@ -517,6 +535,7 @@ export default function OptionAnalyzer() {
       deltaSign,
       deltaMagnitude,
       strikeFilter,
+      strikePct,
       expirationsSelected: selectedExps.length,
       expirationsAvailable: allExpirations.length,
       matching: filteredOptions.length,
@@ -524,8 +543,20 @@ export default function OptionAnalyzer() {
       computedColumns,
     }),
     [ticker, chain, strategy.copy.name, capitalInput, minMonths, maxMonths, deltaSign,
-     deltaMagnitude, strikeFilter, selectedExps.length, allExpirations.length,
+     deltaMagnitude, strikeFilter, strikePct, selectedExps.length, allExpirations.length,
      filteredOptions.length, customFilters, computedColumns]
+  );
+
+  /**
+   * Set strike bounds on the assistant''s behalf, remembering any it gave as a
+   * percentage. Only this path records the rule; a hand-typed bound clears it.
+   */
+  const setStrikeBounds = useCallback(
+    (change: { min: number | null; max: number | null; minPct: number | null; maxPct: number | null }) => {
+      setStrikePct((prev) => nextStrikePct(prev, change));
+      setStrikeFilter(([low, high]) => [change.min ?? low, change.max ?? high]);
+    },
+    []
   );
 
   /**
@@ -919,7 +950,7 @@ export default function OptionAnalyzer() {
                     bounds={strikeBounds}
                     otmDirection={strategy.otmDirection}
                     active={strikeFilter}
-                    onPick={setStrikeFilter}
+                    onPick={handleStrikeRangePick}
                   />
                 </div>
               )}
@@ -1215,7 +1246,7 @@ export default function OptionAnalyzer() {
         setMinMonths={setMonthsFrom}
         setMaxMonths={setMonthsTo}
         setDeltaMagnitude={setDeltaMagnitude}
-        setStrikeFilter={setStrikeFilter}
+        setStrikeBounds={setStrikeBounds}
         addCustomFilter={(filter) =>
           setCustomFilters((prev) => [
             // Replaced by the columns it covers, not just by id: every call

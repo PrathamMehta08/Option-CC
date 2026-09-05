@@ -52,6 +52,7 @@ function state(overrides: Partial<ScreenState> = {}): ScreenState {
     resultsView: 'table',
     capital: '100,000',
     selectedExpirations: ['2026-10-16', '2026-11-20', '2027-03-19'],
+    strikePct: { min: null, max: null },
     minMonths: 0,
     maxMonths: 6,
     deltaSign: '',

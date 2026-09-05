@@ -1,5 +1,6 @@
 import type { ScreenedOption, ScreenerResponse } from '@/lib/optionChain';
 import { describeFilter, type CustomFilter } from '@/lib/filters';
+import type { StrikePct } from '@/lib/strikeIntent';
 import { explainEmptyScreen } from './emptyScreen';
 import type { ComputedColumn } from '@/lib/formula';
 
@@ -29,6 +30,8 @@ export interface ScreenState {
   deltaSign: string;
   deltaMagnitude: number;
   strikeFilter: [number, number];
+  /** Strike bounds standing as a percentage of the price, if any. */
+  strikePct: StrikePct;
   /** Which expirations are ticked, so an empty screen can be explained exactly. */
   selectedExpirations: string[];
   customFilters: CustomFilter[];
@@ -53,7 +56,15 @@ export function describeScreen(s: ScreenState): string {
     `Underlying: ${s.companyName ?? s.data.ticker} (${s.data.ticker}), last price $${s.data.currentPrice.toFixed(2)}.`,
     `Strategy: ${s.strategyName}. Capital: $${s.capital}. Results shown as ${s.resultsView}.`,
     `Scan returned ${s.data.options.length} contracts; ${s.visible.length} shown after filters.`,
-    `Settings: ${s.minMonths}-${s.maxMonths} months to expiry, delta limit ${s.deltaSign}${s.deltaMagnitude}, strikes $${s.strikeFilter[0]}-$${s.strikeFilter[1]}.`
+    `Settings: ${s.minMonths}-${s.maxMonths} months to expiry, delta limit ${s.deltaSign}${s.deltaMagnitude}, strikes $${s.strikeFilter[0]}-$${s.strikeFilter[1]}.` +
+      (s.strikePct.min != null || s.strikePct.max != null
+        ? ` Those strike bounds are standing rules — ${[
+            s.strikePct.min != null ? `floor ${s.strikePct.min}% of the price` : null,
+            s.strikePct.max != null ? `ceiling ${s.strikePct.max}% of the price` : null,
+          ]
+            .filter(Boolean)
+            .join(', ')} — and follow the ticker, so they do not need resetting when it changes.`
+        : '')
   );
 
   if (s.data.affordableCount === 0 && s.data.options.length > 0) {

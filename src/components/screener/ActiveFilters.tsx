@@ -3,6 +3,7 @@
 import React, { memo } from 'react';
 import { cn } from '@/lib/ui';
 import { describeFilter, type CustomFilter } from '@/lib/filters';
+import type { StrikePct } from '@/lib/strikeIntent';
 import type { ComputedColumn } from '@/lib/formula';
 
 export interface ActiveFilterSummary {
@@ -16,6 +17,8 @@ export interface ActiveFilterSummary {
   deltaSign: string;
   deltaMagnitude: number;
   strikeFilter: [number, number];
+  /** Bounds the assistant expressed as a percentage of the price, if any. */
+  strikePct: StrikePct;
   expirationsSelected: number;
   expirationsAvailable: number;
   matching: number;
@@ -28,6 +31,11 @@ interface Chip {
   value: string;
   /** The user's own additions, tinted so they read as theirs. */
   tone?: 'accent';
+}
+
+/** One end of the strike range: a percentage rule, or a plain price. */
+function edge(value: number, pct: number | null): string {
+  return pct == null ? `$${value}` : `${pct}% ($${value})`;
 }
 
 /** The chips, in the order someone would read them out. */
@@ -43,7 +51,12 @@ export function summaryChips(s: ActiveFilterSummary): Chip[] {
           : `${s.minMonths}–${s.maxMonths} months`,
     },
     { label: 'Max delta', value: `${s.deltaSign}${s.deltaMagnitude}` },
-    { label: 'Strikes', value: `$${s.strikeFilter[0]}–$${s.strikeFilter[1]}` },
+    {
+      label: 'Strikes',
+      // A standing percentage is shown as the rule it is, with today''s figure
+      // beside it — otherwise the dollars look like something the user typed.
+      value: `${edge(s.strikeFilter[0], s.strikePct.min)}–${edge(s.strikeFilter[1], s.strikePct.max)}`,
+    },
   ];
 
   // Only worth a chip when it is actually narrowing something.

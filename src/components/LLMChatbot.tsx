@@ -31,7 +31,17 @@ interface LLMChatbotProps {
   setMaxMonths: (months: number) => void;
   setDeltaMagnitude: (delta: number) => void;
   /** Takes an updater too, so applySettings can move one end and keep the other. */
-  setStrikeFilter: React.Dispatch<React.SetStateAction<[number, number]>>;
+  /**
+   * Set strike bounds, keeping any given as a percentage of the price as a
+   * standing rule: "115% of spot" has to follow the next stock, not leave the
+   * previous one''s dollars behind.
+   */
+  setStrikeBounds: (change: {
+    min: number | null;
+    max: number | null;
+    minPct: number | null;
+    maxPct: number | null;
+  }) => void;
   addCustomFilter: (filter: CustomFilter) => void;
   /** Drops filters and returns the id of the newest one left, or "". */
   clearCustomFilters: (field?: string) => string;
@@ -116,7 +126,7 @@ export default function LLMChatbot({
   setMinMonths,
   setMaxMonths,
   setDeltaMagnitude,
-  setStrikeFilter,
+  setStrikeBounds,
   addCustomFilter,
   clearCustomFilters,
   addComputedColumn,
@@ -277,10 +287,13 @@ export default function LLMChatbot({
         if (minStrike != null || maxStrike != null) {
           // Only one end may be given, so the other keeps whatever it has
           // rather than being reset to an arbitrary bound.
-          setStrikeFilter(([low, high]) => [
-            minStrike ?? low,
-            maxStrike ?? high,
-          ]);
+          setStrikeBounds({
+            min: minStrike,
+            max: maxStrike,
+            // The percentages, not just what they came to today.
+            minPct: a.minStrikePctOfSpot != null ? Number(a.minStrikePctOfSpot) : null,
+            maxPct: a.maxStrikePctOfSpot != null ? Number(a.maxStrikePctOfSpot) : null,
+          });
           if (minStrike != null) want.minStrike = minStrike;
           if (maxStrike != null) want.maxStrike = maxStrike;
           done.push(`strikes $${minStrike ?? 'any'}-$${maxStrike ?? 'any'}`);
@@ -373,7 +386,12 @@ export default function LLMChatbot({
         return `Delta limit set to ${magnitude}`;
       }
       case 'setStrikeRange':
-        setStrikeFilter([Number(a.minStrike), Number(a.maxStrike)]);
+        setStrikeBounds({
+          min: Number(a.minStrike),
+          max: Number(a.maxStrike),
+          minPct: null,
+          maxPct: null,
+        });
         return `Strike range set to $${a.minStrike}–$${a.maxStrike}`;
       case 'setSort': {
         // The key is a free string in the schema, because a computed column's
