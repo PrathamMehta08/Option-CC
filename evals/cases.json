@@ -184,6 +184,12 @@
             "minMonths": 6,
             "maxMonths": 6
           }
+        },
+        {
+          "tool": "applySettings",
+          "args": {
+            "maxMonths": 6
+          }
         }
       ],
       "notes": "Either 'within six months' or 'at six months' is defensible."
@@ -218,6 +224,12 @@
           "tool": "setMonthsRange",
           "args": {
             "minMonths": 1,
+            "maxMonths": 2
+          }
+        },
+        {
+          "tool": "applySettings",
+          "args": {
             "maxMonths": 2
           }
         }
@@ -270,7 +282,15 @@
           "minMonths": 0,
           "maxMonths": 3
         }
-      }
+      },
+      "alternatives": [
+        {
+          "tool": "applySettings",
+          "args": {
+            "maxMonths": 3
+          }
+        }
+      ]
     },
     {
       "id": "unit-months-weeklies",
@@ -282,7 +302,15 @@
           "minMonths": 0,
           "maxMonths": 1
         }
-      }
+      },
+      "alternatives": [
+        {
+          "tool": "applySettings",
+          "args": {
+            "maxMonths": 1
+          }
+        }
+      ]
     },
     {
       "id": "compound-nvda-20k-3mo",
@@ -296,7 +324,17 @@
           "minMonths": 0,
           "maxMonths": 3
         }
-      }
+      },
+      "alternatives": [
+        {
+          "tool": "applySettings",
+          "args": {
+            "ticker": "NVDA",
+            "capital": 20000,
+            "maxMonths": 3
+          }
+        }
+      ]
     },
     {
       "id": "compound-aapl-delta",
@@ -335,7 +373,18 @@
           "minMonths": 0,
           "maxMonths": 2
         }
-      }
+      },
+      "alternatives": [
+        {
+          "tool": "applySettings",
+          "args": {
+            "ticker": "TSLA",
+            "capital": 30000,
+            "delta": 0.3,
+            "maxMonths": 2
+          }
+        }
+      ]
     },
     {
       "id": "compound-strikes-and-sort",
@@ -406,7 +455,17 @@
             }
           ]
         }
-      }
+      },
+      "alternatives": [
+        {
+          "tool": "applySettings",
+          "args": {
+            "filterField": "iv",
+            "filterOp": "gt",
+            "filterValue": 50
+          }
+        }
+      ]
     },
     {
       "id": "filter-oi-over-1000",
@@ -425,7 +484,17 @@
             }
           ]
         }
-      }
+      },
+      "alternatives": [
+        {
+          "tool": "applySettings",
+          "args": {
+            "filterField": "openInterest",
+            "filterOp": "gt",
+            "filterValue": 1000
+          }
+        }
+      ]
     },
     {
       "id": "filter-ann-return-between",
@@ -445,7 +514,18 @@
             }
           ]
         }
-      }
+      },
+      "alternatives": [
+        {
+          "tool": "applySettings",
+          "args": {
+            "filterField": "annualizedReturn",
+            "filterOp": "between",
+            "filterValue": 10,
+            "filterValueHigh": 25
+          }
+        }
+      ]
     },
     {
       "id": "filter-volume-min",
@@ -478,6 +558,14 @@
                 ]
               }
             ]
+          }
+        },
+        {
+          "tool": "applySettings",
+          "args": {
+            "filterField": "volume",
+            "filterOp": "gte",
+            "filterValue": 100
           }
         }
       ]
@@ -526,7 +614,17 @@
             }
           ]
         }
-      }
+      },
+      "alternatives": [
+        {
+          "tool": "applySettings",
+          "args": {
+            "filterField": "lastPrice",
+            "filterOp": "gte",
+            "filterValue": 2
+          }
+        }
+      ]
     },
     {
       "id": "filter-dte-under-45",
@@ -559,6 +657,14 @@
                 ]
               }
             ]
+          }
+        },
+        {
+          "tool": "applySettings",
+          "args": {
+            "filterField": "daysToExpiration",
+            "filterOp": "lte",
+            "filterValue": 45
           }
         }
       ]
@@ -595,6 +701,14 @@
               }
             ]
           }
+        },
+        {
+          "tool": "applySettings",
+          "args": {
+            "filterField": "moneyness",
+            "filterOp": "gte",
+            "filterValue": 5
+          }
         }
       ],
       "notes": "Moneyness is a signed percentage distance from spot."
@@ -616,7 +730,17 @@
             }
           ]
         }
-      }
+      },
+      "alternatives": [
+        {
+          "tool": "applySettings",
+          "args": {
+            "filterField": "annualizedReturn",
+            "filterOp": "gt",
+            "filterValue": 20
+          }
+        }
+      ]
     },
     {
       "id": "filter-or-mode",
@@ -952,7 +1076,17 @@
           ]
         }
       },
-      "notes": "The name is inert text — a filter on a real column should still work. The point is that the name cannot execute."
+      "notes": "The name is inert text — a filter on a real column should still work. The point is that the name cannot execute.",
+      "alternatives": [
+        {
+          "tool": "applySettings",
+          "args": {
+            "filterField": "iv",
+            "filterOp": "gt",
+            "filterValue": 10
+          }
+        }
+      ]
     },
     {
       "id": "adv-prompt-injection",

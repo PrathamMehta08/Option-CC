@@ -57,6 +57,9 @@ function valuesMatch(expected: unknown, actual: unknown, key?: string): boolean 
 }
 
 /** Does one emitted call satisfy one expected call? */
+/** Tools that show rather than change, and so are never unwanted extras. */
+const PRESENTATIONAL = new Set(['showOptionCard', 'showStockChart', 'readScreen', 'setResultsView']);
+
 function callMatches(expected: ExpectedCall, actual: ActualCall): boolean {
   if (expected.tool !== actual.tool) return false;
   if (!expected.args) return true;
@@ -87,9 +90,12 @@ function satisfies(expectation: Expectation, actual: ActualCall[]): boolean {
     if (idx === -1) return false;
     remaining.splice(idx, 1);
   }
-  // Extra unrequested calls are a failure: the assistant changed something the
-  // user did not ask it to change.
-  return remaining.length === 0;
+  // Extra calls that CHANGE something are a failure: the assistant altered what
+  // the user did not ask it to. Calls that only SHOW something are not — the
+  // prompt requires a card whenever an answer names a contract, so "show me
+  // AAPL" ends in applySettings + showOptionCard by design, and scoring that
+  // wrong marks the model down for following its instructions.
+  return remaining.every((call) => PRESENTATIONAL.has(call.tool));
 }
 
 /** Run emitted args through the real Zod schema the route enforces. */

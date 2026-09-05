@@ -18,6 +18,7 @@ import { createLlm, llmModel, isAssistantConfigured } from '@/lib/assistant/mode
 import { SYSTEM_PROMPT } from '@/lib/assistant/prompt';
 import { assistantTools } from '@/lib/assistant/tools';
 import { loadEnvLocal } from './env';
+import { toolResult } from './toolResult';
 import { grade, validateCall, describeExpectation, describeActual } from './grade';
 import type {
   ActualCall,
@@ -313,7 +314,10 @@ async function runCase(testCase: EvalCase, budget: TokenBudget): Promise<CaseRes
         type: 'tool-result' as const,
         toolCallId: call.toolCallId,
         toolName: call.toolName,
-        result: 'Done',
+        // The app's own shape, not "Done": applySettings really hands back the
+        // whole screen, and a model told otherwise reads the screen again — a
+        // second call the grader then counts against it.
+        result: toolResult(call.toolName, (call.args ?? {}) as Record<string, unknown>),
       })),
     });
   }
