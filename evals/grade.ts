@@ -57,6 +57,21 @@ function valuesMatch(expected: unknown, actual: unknown, key?: string): boolean 
 }
 
 /** Does one emitted call satisfy one expected call? */
+/** Whether two calls carry the same arguments, nulls and all. */
+function sameArgs(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) {
+    const x = a[key] ?? null;
+    const y = b[key] ?? null;
+    if (typeof x === 'number' && typeof y === 'number') {
+      if (Math.abs(x - y) > 1e-9) return false;
+    } else if (JSON.stringify(x) !== JSON.stringify(y)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /** Tools that show rather than change, and so are never unwanted extras. */
 const PRESENTATIONAL = new Set(['showOptionCard', 'showStockChart', 'readScreen', 'setResultsView']);
 
@@ -85,9 +100,11 @@ function satisfies(expectation: Expectation, actual: ActualCall[]): boolean {
 
   const wanted = expectedCalls(expectation);
   const remaining = [...actual];
+  const matched: ActualCall[] = [];
   for (const want of wanted) {
     const idx = remaining.findIndex((a) => callMatches(want, a));
     if (idx === -1) return false;
+    matched.push(remaining[idx]);
     remaining.splice(idx, 1);
   }
   // Extra calls that CHANGE something are a failure: the assistant altered what
@@ -95,7 +112,15 @@ function satisfies(expectation: Expectation, actual: ActualCall[]): boolean {
   // prompt requires a card whenever an answer names a contract, so "show me
   // AAPL" ends in applySettings + showOptionCard by design, and scoring that
   // wrong marks the model down for following its instructions.
-  return remaining.every((call) => PRESENTATIONAL.has(call.tool));
+  return remaining.every(
+    (call) =>
+      PRESENTATIONAL.has(call.tool) ||
+      // A call that repeats one already matched changes nothing the second
+      // time — the app applies the same value again and the screen is
+      // identical. Sloppy, not wrong, and not the user''s settings being
+      // altered behind their back.
+      matched.some((m) => m.tool === call.tool && sameArgs(m.args, call.args))
+  );
 }
 
 /** Run emitted args through the real Zod schema the route enforces. */
@@ -120,6 +145,34 @@ export interface Grade {
   outcome: Outcome;
   pass: boolean;
   reason: string;
+}
+
+/**
+ * Why the calls did not match, in terms of the argument that differed.
+ *
+ * "emitted applySettings, showOptionCard which does not match" sent me looking
+ * for a rule about extra calls when the real difference was maxMonths 1 against
+ * an expected 2. The reason line has to name the disagreement.
+ */
+function explainMismatch(expectation: Expectation, actual: ActualCall[]): string {
+  const emitted = actual.map((c) => c.tool).join(', ');
+  if (isNoneExpectation(expectation)) return `expected no tool call, emitted ${emitted}`;
+
+  for (const want of expectedCalls(expectation)) {
+    const sameTool = actual.filter((a) => a.tool === want.tool);
+    if (sameTool.length === 0) {
+      return `expected ${want.tool}, emitted ${emitted}`;
+    }
+    if (!want.args) continue;
+    const differences = Object.entries(want.args)
+      .filter(([key, value]) => !valuesMatch(value, sameTool[0].args[key], key))
+      .map(([key, value]) => `${key} ${JSON.stringify(sameTool[0].args[key])} ≠ ${JSON.stringify(value)}`);
+    if (differences.length > 0) return `${want.tool}: ${differences.join(', ')}`;
+  }
+
+  // Every expected call is present and correct, so the mismatch is something
+  // extra that changes state.
+  return `emitted ${emitted} — one of these changes something that was not asked for`;
 }
 
 export function grade(testCase: EvalCase, actual: ActualCall[], errored?: string): Grade {
@@ -167,7 +220,7 @@ export function grade(testCase: EvalCase, actual: ActualCall[], errored?: string
     reason:
       actual.length === 0
         ? 'expected a tool call, got none'
-        : `emitted ${actual.map((c) => c.tool).join(', ')} which does not match`,
+        : explainMismatch(testCase.expect, actual),
   };
 }
 

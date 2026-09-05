@@ -108,7 +108,7 @@ export default function OptionAnalyzer() {
   const [strikeFilter, setStrikeFilter] = useState<[number, number]>(strategy.defaults.strikeRange);
   // A strike bound the assistant gave as a percentage of the price is a rule
   // that outlives the stock it was set on: switching tickers re-resolves it
-  // against the new price instead of carrying the old stock''s dollars over.
+  // against the new price instead of carrying the old stock's dollars over.
   const [strikePct, setStrikePct] = useState<StrikePct>(NO_STRIKE_PCT);
   const [selectedExps, setSelectedExps] = useState<string[]>([]);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
@@ -128,7 +128,7 @@ export default function OptionAnalyzer() {
   const [activeKeypad, setActiveKeypad] = useState<'minMonths' | 'maxMonths' | 'delta' | 'strikeMin' | 'strikeMax' | 'expirations' | null>(null);
   const handleCloseKeypad = useCallback(() => setActiveKeypad(null), []);
   // Touching a strike field by hand names an actual price, so it retires the
-  // standing "115% of spot" rule for that edge. The rule is the assistant''s.
+  // standing "115% of spot" rule for that edge. The rule is the assistant's.
   const handleStrikeMinChange = useCallback((v: number) => {
     setStrikePct((prev) => ({ ...prev, min: null }));
     setStrikeFilter((prev) => [v, Math.max(prev[1], v)]);
@@ -338,7 +338,7 @@ export default function OptionAnalyzer() {
   const [seenBoard, setSeenBoard] = useState('');
   if (strikeBounds && seenBoard !== boardKey) {
     setSeenBoard(boardKey);
-    // A standing percentage is re-resolved here, against THIS board''s price.
+    // A standing percentage is re-resolved here, against THIS board's price.
     setStrikeFilter(strikeRangeForBoard(strikeBounds, strikePct, chain?.currentPrice ?? 0));
   }
 
@@ -548,7 +548,7 @@ export default function OptionAnalyzer() {
   );
 
   /**
-   * Set strike bounds on the assistant''s behalf, remembering any it gave as a
+   * Set strike bounds on the assistant's behalf, remembering any it gave as a
    * percentage. Only this path records the rule; a hand-typed bound clears it.
    */
   const setStrikeBounds = useCallback(

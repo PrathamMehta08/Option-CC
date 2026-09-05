@@ -6,6 +6,7 @@ import type { Message, ToolInvocation } from 'ai';
 import { MessageSquare, X, Send, Bot, User, Loader2, AlertTriangle, Maximize2, Minimize2, Sparkles, ChevronDown, Expand, Shrink } from 'lucide-react';
 import { cn } from '@/lib/ui';
 import { parseCustomFilter, describeFilter, splitFilter, type CustomFilter } from '@/lib/filters';
+import { checkRetune, newTurn } from '@/lib/assistant/turnEdits';
 import { normalizeDelta } from '@/lib/assistant/normalize';
 import { describeHistory, type ChartRange, type HistoryResponse } from '@/lib/history';
 import { StockChart } from '@/components/screener/StockChart';
@@ -34,7 +35,7 @@ interface LLMChatbotProps {
   /**
    * Set strike bounds, keeping any given as a percentage of the price as a
    * standing rule: "115% of spot" has to follow the next stock, not leave the
-   * previous one''s dollars behind.
+   * previous one's dollars behind.
    */
   setStrikeBounds: (change: {
     min: number | null;
@@ -116,7 +117,7 @@ function ToolChip({ invocation }: { invocation: ToolInvocation }) {
   );
 }
 
-/** The provider''s complaint when a required tool call was refused. */
+/** The provider's complaint when a required tool call was refused. */
 const TOOL_REFUSAL = /tool choice is required/i;
 
 export default function LLMChatbot({
@@ -146,6 +147,9 @@ export default function LLMChatbot({
   const [isOpen, setIsOpen] = useState(false);
   // One automatic retry per turn, and only for a refused tool call.
   const proseRetryRef = useRef(false);
+  // What this turn has already changed, so a setting cannot be walked from one
+  // value to the next across steps.
+  const turnRef = useRef(newTurn());
   const reloadRef = useRef<((options?: { body?: Record<string, unknown> }) => void) | null>(null);
   // Expanded is a display preference, so it stays local.
   const [expanded, setExpanded] = useState(false);
@@ -209,6 +213,22 @@ export default function LLMChatbot({
         //
         // Every field is optional and an omitted one is left alone, so this
         // cannot clear a setting the user never mentioned.
+        // Refuse to re-tune a setting this turn already set. The check runs
+        // before anything is applied, so a refused call changes nothing.
+        const retune = checkRetune(turnRef.current, {
+          ticker: a.ticker,
+          capital: a.capital,
+          minMonths: a.minMonths,
+          maxMonths: a.maxMonths,
+          delta: a.delta,
+          minStrike: a.minStrike,
+          maxStrike: a.maxStrike,
+          minStrikePctOfSpot: a.minStrikePctOfSpot,
+          maxStrikePctOfSpot: a.maxStrikePctOfSpot,
+          strategy: a.strategy,
+        });
+        if (retune.message) return retune.message;
+
         const done: string[] = [];
         // The ticker this call is switching to, so everything downstream waits
         // for THAT scan rather than for whatever was on screen before.
@@ -445,6 +465,10 @@ export default function LLMChatbot({
           ? `Added column "${added.column.name}" = ${added.column.source}, sorted by it`
           : `Formula rejected: ${added.error}`;
       }
+      case 'askUser':
+        // Nothing changes. The question itself is the model's reply; this only
+        // tells it not to go looking for something to do instead.
+        return 'Asked. Wait for their answer — change nothing until they say.';
       case 'readScreen': {
         // The one tool that hands data back rather than changing state.
         const summary = await readScreen();
@@ -578,6 +602,7 @@ export default function LLMChatbot({
   const send = (text: string) => {
     if (isLoading) return;
     proseRetryRef.current = false;
+    turnRef.current = newTurn();
     append({ role: 'user', content: text });
   };
 
@@ -957,8 +982,9 @@ export default function LLMChatbot({
         <div className={cn('p-4 bg-bg-2 border-t border-line shrink-0', soloMode && 'mx-auto w-full max-w-3xl')}>
           <form
             onSubmit={(e) => {
-              // A new turn gets its own retry.
+              // A new turn gets its own retry, and its own set of changes.
               proseRetryRef.current = false;
+              turnRef.current = newTurn();
               handleSubmit(e);
             }}
             className="relative flex items-center"

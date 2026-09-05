@@ -53,7 +53,7 @@ export function summaryChips(s: ActiveFilterSummary): Chip[] {
     { label: 'Max delta', value: `${s.deltaSign}${s.deltaMagnitude}` },
     {
       label: 'Strikes',
-      // A standing percentage is shown as the rule it is, with today''s figure
+      // A standing percentage is shown as the rule it is, with today's figure
       // beside it — otherwise the dollars look like something the user typed.
       value: `${edge(s.strikeFilter[0], s.strikePct.min)}–${edge(s.strikeFilter[1], s.strikePct.max)}`,
     },

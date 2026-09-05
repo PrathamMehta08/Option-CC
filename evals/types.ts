@@ -63,6 +63,8 @@ export interface CaseResult {
   reason: string;
   error?: string;
   latencyMs: number;
+  /** What this case cost, summed over every step it took. */
+  usage: { prompt: number; completion: number; total: number };
 }
 
 export interface CategorySummary {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import { TOOL_PARAMETERS, TOOL_NAMES } from './tools';
+import { TOOL_PARAMETERS, TOOL_NAMES, assistantTools } from './tools';
 
 /**
  * The tool schemas, checked against what the provider will actually accept.
@@ -187,5 +187,24 @@ describe('removing a filter is expressible', () => {
       removeFilterField: null,
     });
     expect(parsed.success).toBe(true);
+  });
+});
+
+/**
+ * askUser existed in the schemas and in the prompt, and was never added to the
+ * object actually sent to the provider. The model read about it, called it, and
+ * the request came back "attempted to call tool 'askUser' which was not in
+ * request.tools" — a whole category of behaviour broken by a missing line, with
+ * nothing at build time to say so.
+ */
+describe('every tool the model is told about is a tool it is given', () => {
+  it('sends exactly the tools that have schemas', () => {
+    expect(Object.keys(assistantTools).sort()).toEqual([...TOOL_NAMES].sort());
+  });
+
+  it('describes every tool it sends', () => {
+    for (const [name, tool] of Object.entries(assistantTools)) {
+      expect((tool as { description?: string }).description, `${name} has no description`).toBeTruthy();
+    }
   });
 });

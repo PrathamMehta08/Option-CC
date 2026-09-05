@@ -18,7 +18,7 @@ import { createLlm, llmModel, isAssistantConfigured } from '@/lib/assistant/mode
 import { SYSTEM_PROMPT } from '@/lib/assistant/prompt';
 import { assistantTools } from '@/lib/assistant/tools';
 import { loadEnvLocal } from './env';
-import { toolResult } from './toolResult';
+import { createToolRuntime } from './toolResult';
 import { grade, validateCall, describeExpectation, describeActual } from './grade';
 import type {
   ActualCall,
@@ -132,7 +132,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 class TokenBudget {
   private spend: { at: number; tokens: number }[] = [];
   /** Seeded, then corrected from real usage as the run proceeds. */
-  private estimate = 2150;
+  // Seeded from a measured run: 66 cases spent 569,818 tokens over roughly 165
+  // calls. The old seed of 2,150 predated the harness returning a real screen
+  // summary, and quoted a full run at half its true cost.
+  private estimate = 3450;
   private samples = 0;
 
   constructor(private readonly perMinute: number) {}
@@ -220,10 +223,31 @@ function retryDelayMs(err: unknown, attempt: number): number {
   return Math.min(30_000, 1000 * 2 ** attempt) + Math.floor(Math.random() * 400);
 }
 
+// ----------------------------------------------------------------- telemetry
+
+/**
+ * Groq's published rates for openai/gpt-oss-120b, in dollars per token.
+ * Only ever an estimate of the bill — the provider's own dashboard is the
+ * authority — but a running figure beats finding out afterwards.
+ */
+const PRICE = { in: 0.15 / 1_000_000, out: 0.75 / 1_000_000 };
+
+function cost(u: { prompt: number; completion: number }): number {
+  return u.prompt * PRICE.in + u.completion * PRICE.out;
+}
+
+function money(dollars: number): string {
+  return dollars < 0.01 ? `${(dollars * 100).toFixed(2)}¢` : `$${dollars.toFixed(3)}`;
+}
+
 // ------------------------------------------------------------------- running
 
 /** One model call, paced by the token budget, with retry as a safety net. */
-async function callModel(messages: CoreMessage[], budget: TokenBudget) {
+async function callModel(
+  messages: CoreMessage[],
+  budget: TokenBudget,
+  toolChoice: 'auto' | 'required'
+) {
   const llm = createLlm();
   let lastError: unknown;
 
@@ -235,6 +259,10 @@ async function callModel(messages: CoreMessage[], budget: TokenBudget) {
         system: SYSTEM_PROMPT,
         messages,
         tools: assistantTools,
+        // The route requires a tool on the first step of a turn and leaves the
+        // rest on auto. Without that here the harness measured a freedom the
+        // app does not give the model.
+        toolChoice,
         // Determinism: temperature 0, and a fixed seed since Groq exposes one.
         temperature: 0,
         seed: 7,
@@ -267,6 +295,9 @@ async function runCase(testCase: EvalCase, budget: TokenBudget): Promise<CaseRes
   const actual: ActualCall[] = [];
   const said: string[] = [];
   let errored: string | undefined;
+  const usage = { prompt: 0, completion: 0, total: 0 };
+  // One turn, one memory — the same object the client keeps per user message.
+  const tools = createToolRuntime();
 
   // Mirror the app: LLMChatbot runs useChat with maxSteps 5 and hands each tool
   // call a result before the model continues. The tools have no `execute`, so a
@@ -275,7 +306,20 @@ async function runCase(testCase: EvalCase, budget: TokenBudget): Promise<CaseRes
   const messages: CoreMessage[] = [{ role: 'user', content: testCase.prompt }];
 
   for (let step = 0; step < MAX_STEPS; step++) {
-    const { result, error } = await callModel(messages, budget);
+    // First step of the turn must act, exactly as the route demands.
+    let { result, error } = await callModel(messages, budget, step === 0 ? 'required' : 'auto');
+
+    // And exactly as the browser does it: a model that refuses to call a tool
+    // is given one more go with prose allowed, rather than the turn dying.
+    if (error && /tool choice is required/i.test((error as Error)?.message ?? '')) {
+      ({ result, error } = await callModel(messages, budget, 'auto'));
+    }
+
+    if (result?.usage) {
+      usage.prompt += result.usage.promptTokens ?? 0;
+      usage.completion += result.usage.completionTokens ?? 0;
+      usage.total += result.usage.totalTokens ?? 0;
+    }
 
     if (error instanceof DailyQuotaExhausted) throw error;
     if (error) {
@@ -317,7 +361,7 @@ async function runCase(testCase: EvalCase, budget: TokenBudget): Promise<CaseRes
         // The app's own shape, not "Done": applySettings really hands back the
         // whole screen, and a model told otherwise reads the screen again — a
         // second call the grader then counts against it.
-        result: toolResult(call.toolName, (call.args ?? {}) as Record<string, unknown>),
+        result: tools.result(call.toolName, (call.args ?? {}) as Record<string, unknown>),
       })),
     });
   }
@@ -337,6 +381,7 @@ async function runCase(testCase: EvalCase, budget: TokenBudget): Promise<CaseRes
     reason: verdict.reason,
     error: errored,
     latencyMs: Date.now() - started,
+    usage,
   };
 }
 
@@ -389,6 +434,20 @@ function printReport(report: RunReport) {
       console.log('');
     }
   }
+
+  const spend = report.results.reduce(
+    (t, r) => ({
+      prompt: t.prompt + (r.usage?.prompt ?? 0),
+      completion: t.completion + (r.usage?.completion ?? 0),
+      total: t.total + (r.usage?.total ?? 0),
+    }),
+    { prompt: 0, completion: 0, total: 0 }
+  );
+  console.log(
+    `${DIM}Tokens: ${spend.total.toLocaleString()} ` +
+      `(${spend.prompt.toLocaleString()} in, ${spend.completion.toLocaleString()} out) ` +
+      `— about ${money(cost(spend))} at Groq's published rates.${RESET}\n`
+  );
 
   const width = Math.max(14, ...report.byCategory.map((c) => c.category.length));
   console.log(`${BOLD}Pass rate by category${RESET}\n`);
@@ -484,6 +543,8 @@ async function main() {
   }
 
   let done = 0;
+  const inFlight = new Set<string>();
+  const spent = { prompt: 0, completion: 0, total: 0 };
   let quotaError: DailyQuotaExhausted | undefined;
   const results = await pool(cases, concurrency, async (testCase) => {
     if (quotaError) {
@@ -499,8 +560,13 @@ async function main() {
         reason: 'skipped: daily token quota exhausted',
         error: 'daily token quota exhausted',
         latencyMs: 0,
+        usage: { prompt: 0, completion: 0, total: 0 },
       };
     }
+    // Say what is in flight. With concurrency these interleave, which is the
+    // honest picture: several cases are genuinely running at once.
+    inFlight.add(testCase.id);
+    process.stdout.write(`${DIM}   ·  ${testCase.id} …${RESET}\n`);
     let result: CaseResult;
     try {
       result = await runCase(testCase, budget);
@@ -517,6 +583,10 @@ async function main() {
       throw err;
     }
     done++;
+    inFlight.delete(testCase.id);
+    spent.prompt += result.usage.prompt;
+    spent.completion += result.usage.completion;
+    spent.total += result.usage.total;
     const mark = result.pass ? `${GREEN}✓${RESET}` : `${RED}✗${RESET}`;
     // Project from the token budget, not from elapsed/done: the first cases
     // wait on the rolling window, which makes a naive rate wildly pessimistic.
@@ -524,7 +594,10 @@ async function main() {
     const eta = (remaining * 2.1 * budget.perRequestEstimate) / (tpm * TPM_SAFETY);
     process.stdout.write(
       `${mark} ${String(done).padStart(3)}/${cases.length}  ${result.id.padEnd(30)} ` +
-        `${DIM}${remaining > 0 ? `~${Math.ceil(eta)}m left` : ''}${RESET}\n`
+        `${DIM}${String(result.usage.total.toLocaleString()).padStart(6)} tok  ` +
+        `${String(spent.total.toLocaleString()).padStart(7)} total  ` +
+        `${money(cost(spent))}  ` +
+        `${remaining > 0 ? `~${Math.ceil(eta)}m left` : ''}${RESET}\n`
     );
     return result;
   });

@@ -170,7 +170,7 @@ export function describeToolCall(
       return { tone: 'done', text: `Showing ${args.view}` };
     case 'addCustomFilter': {
       // A bundled filter is split into one per column, so the chip counts them
-      // rather than printing the model''s own name for the bundle.
+      // rather than printing the model's own name for the bundle.
       const conditions = Array.isArray(args.conditions) ? args.conditions : [];
       const fields = [
         ...new Set(
@@ -186,6 +186,10 @@ export function describeToolCall(
     }
     case 'addComputedColumn':
       return { tone: 'done', text: `Column added${args.name ? `: ${args.name}` : ''}` };
+    case 'askUser':
+      // The question is in the reply beside this; repeating it here would say
+      // the same thing twice.
+      return { tone: 'done', text: 'Waiting on you' };
     case 'readScreen':
       // Deliberately says nothing about the data: the table is on screen, and
       // the model is about to say whatever is worth saying about it.

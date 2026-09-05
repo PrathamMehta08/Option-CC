@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "eval": "tsx evals/run.ts",
+    "eval:regrade": "tsx evals/regrade.ts",
     "llm:check": "tsx evals/check.ts"
   },
   "dependencies": {

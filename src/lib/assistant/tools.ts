@@ -177,6 +177,17 @@ export const TOOL_PARAMETERS = {
       ),
   }),
 
+  // The way out of a request the model cannot honestly act on. Without it, a
+  // first step that must call a tool has no legal way to say "which did you
+  // mean" — and "make it safer" became delta 0.2, then 0.1 at a 110% strike
+  // floor, then 0.05 at 120%: three changes nobody asked for, ending on an
+  // empty screen the model then explained.
+  askUser: z.object({
+    question: z
+      .string()
+      .describe('The one thing you need to know, in a sentence, in their own terms'),
+  }),
+
   addCustomFilter: z.object({
     id: z.string().describe('Unique id'),
     name: z.string().describe('Short chip label, e.g. "High IV"'),
@@ -210,6 +221,9 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   addComputedColumn:
     'Add a column computed from the numeric columns and sort by it. Use whenever the user ranks by something that is not a column — "oi^2 + ann return^2", "yield per day". Sorts by it descending on its own, so no setSort afterwards.',
 
+  askUser:
+    'Ask the user what they mean, or tell them a request is outside this app. Nothing on the screen changes. Use it when a request could reasonably mean several different changes ("make it safer", "better returns"), when it names something the app does not have, or when it is not about options or this screener at all. Guessing at an ambiguous request and then tuning the guess is always wrong — ask once instead.',
+
   addCustomFilter:
     'Filter on numeric columns, for conditions the dedicated tools do not cover ("IV above 50", "open interest over 500"). Conditions are data, not code. Only the listed columns and operators exist; if the user asks for one outside them, do not call this tool.',
 
@@ -238,6 +252,7 @@ export const assistantTools = {
     parameters: TOOL_PARAMETERS.applySettings,
   }),
   readScreen: tool({ description: DESCRIPTIONS.readScreen, parameters: TOOL_PARAMETERS.readScreen }),
+  askUser: tool({ description: DESCRIPTIONS.askUser, parameters: TOOL_PARAMETERS.askUser }),
   showOptionCard: tool({
     description: DESCRIPTIONS.showOptionCard,
     parameters: TOOL_PARAMETERS.showOptionCard,
