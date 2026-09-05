@@ -17,7 +17,11 @@ export interface ScreenState {
   data: ScreenerResponse | null;
   loading: boolean;
   visible: ScreenedOption[];
+  /** "Apple Inc.", not "AAPL" — the model is asked for the company by name. */
+  companyName: string | null;
   strategyName: string;
+  /** Table or cards, so the assistant knows what it is describing. */
+  resultsView: 'table' | 'cards';
   capital: string;
   minMonths: number;
   maxMonths: number;
@@ -43,8 +47,8 @@ export function describeScreen(s: ScreenState): string {
   }
 
   lines.push(
-    `Underlying: ${s.data.ticker}, last price $${s.data.currentPrice.toFixed(2)}.`,
-    `Strategy: ${s.strategyName}. Capital: $${s.capital}.`,
+    `Underlying: ${s.companyName ?? s.data.ticker} (${s.data.ticker}), last price $${s.data.currentPrice.toFixed(2)}.`,
+    `Strategy: ${s.strategyName}. Capital: $${s.capital}. Results shown as ${s.resultsView}.`,
     `Scan returned ${s.data.options.length} contracts; ${s.visible.length} shown after filters.`,
     `Settings: ${s.minMonths}-${s.maxMonths} months to expiry, delta limit ${s.deltaSign}${s.deltaMagnitude}, strikes $${s.strikeFilter[0]}-$${s.strikeFilter[1]}.`
   );
@@ -80,10 +84,14 @@ export function describeScreen(s: ScreenState): string {
     for (const o of top) {
       lines.push(
         `  ${o.expiration} (${o.daysToExpiration}d) $${o.strike} strike — ` +
-          `premium $${o.lastPrice.toFixed(2)}, delta ${o.delta.toFixed(3)}, ` +
-          `IV ${o.iv.toFixed(1)}%, OI ${o.openInterest}, ` +
-          `annualized ${o.annualizedReturn.toFixed(2)}%` +
-          (o.maxContracts > 0 ? `, ${o.maxContracts} affordable` : ', not affordable')
+          `premium $${o.lastPrice.toFixed(2)} ($${o.premiumPerContract.toFixed(0)}/contract), ` +
+          `delta ${o.delta.toFixed(3)}, IV ${o.iv.toFixed(1)}%, ` +
+          `moneyness ${o.moneyness.toFixed(1)}%, OI ${o.openInterest}, ` +
+          `annualized ${o.annualizedReturn.toFixed(2)}%, ` +
+          `if assigned ${o.annualizedReturnWithGain.toFixed(2)}%` +
+          (o.maxContracts > 0
+            ? `, ${o.maxContracts} affordable for $${Math.round(o.totalCapitalRequired).toLocaleString()} collecting $${o.totalPremiumReceived.toFixed(0)}`
+            : ', not affordable')
       );
     }
   }

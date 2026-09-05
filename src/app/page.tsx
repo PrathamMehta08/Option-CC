@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useDeferredValue, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useDeferredValue, useCallback, useRef } from 'react';
 import {
   Calendar,
   TrendingUp,
@@ -34,6 +34,12 @@ type OptionData = ScreenedOption;
 /** The chain endpoint's payload, plus the error shape it uses on failure. */
 type ChainApiResponse = ChainResponse & { error?: string };
 
+
+/**
+ * How long readScreen will wait for an in-flight scan before reporting what it
+ * has. Long enough for a cold chain fetch, short enough not to look hung.
+ */
+const SCAN_WAIT_MS = 9000;
 
 /** The month windows worth a single click. */
 const MONTH_PRESETS: { label: string; value: [number, number] }[] = [
@@ -376,12 +382,14 @@ export default function OptionAnalyzer() {
    * call — which matters, since the daily token budget makes prompting the
    * real assistant an expensive way to check a string.
    */
-  const readScreen = () =>
+  const snapshot = () =>
     describeScreen({
       data,
       loading,
       visible: filteredOptions,
+      companyName: chain?.companyName ?? null,
       strategyName: strategy.copy.name,
+      resultsView: mobileView,
       capital: capitalInput,
       minMonths,
       maxMonths,
@@ -392,6 +400,38 @@ export default function OptionAnalyzer() {
       computedColumns,
       sort: globalSortConfig,
     });
+
+  /**
+   * The snapshot, kept where an async callback can reach it.
+   *
+   * Written in an effect rather than during render: refs are not readable or
+   * writable in render under the React Compiler rules this project lints with.
+   */
+  const snapshotRef = useRef(snapshot);
+  const scanStateRef = useRef({ loading, ready: hasResults, wanted: ticker });
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+    scanStateRef.current = { loading, ready: hasResults, wanted: ticker };
+  });
+
+  /**
+   * Read the screen, waiting for a scan that is on its way.
+   *
+   * Setting a ticker starts a debounced fetch, so an assistant that sets one
+   * and immediately reads used to be told "nothing is loaded yet" — and would
+   * then waste a whole round trip re-setting the ticker it had just set. On a
+   * budget of 8,000 tokens a minute that wasted step is often the one that
+   * runs out. Waiting costs a second and saves a request.
+   */
+  const readScreen = useCallback(async () => {
+    const deadline = Date.now() + SCAN_WAIT_MS;
+    while (Date.now() < deadline) {
+      const { loading: busy, ready, wanted } = scanStateRef.current;
+      if (!busy && (ready || !wanted)) break;
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    return snapshotRef.current();
+  }, []);
 
   return (
     <div className="min-h-screen font-sans antialiased text-fg selection:bg-zinc-700 pb-28 md:pb-16">
@@ -1003,7 +1043,8 @@ export default function OptionAnalyzer() {
         addCustomFilter={(filter) => setCustomFilters(prev => [...prev.filter(f => f.id !== filter.id), filter])}
         addComputedColumn={addComputedColumn}
         setSortConfig={setGlobalSortConfig}
-        triggerFetch={() => void loadChain(ticker)}
+        setStrategy={handleStrategyChange}
+        setResultsView={setMobileView}
         readScreen={readScreen}
       />
     </div>

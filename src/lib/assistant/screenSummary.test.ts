@@ -47,7 +47,9 @@ function state(overrides: Partial<ScreenState> = {}): ScreenState {
     data: response(),
     loading: false,
     visible: [row()],
+    companyName: 'Apple Inc.',
     strategyName: 'Covered Calls',
+    resultsView: 'table',
     capital: '100,000',
     minMonths: 0,
     maxMonths: 6,
@@ -64,7 +66,7 @@ function state(overrides: Partial<ScreenState> = {}): ScreenState {
 describe('describeScreen', () => {
   // The question that exposed the gap: "what is the last AAPL price".
   it('reports the underlying and its last price', () => {
-    expect(describeScreen(state())).toContain('Underlying: AAPL, last price $324.96.');
+    expect(describeScreen(state())).toContain('Underlying: Apple Inc. (AAPL), last price $324.96.');
   });
 
   it('says plainly when nothing has been scanned', () => {

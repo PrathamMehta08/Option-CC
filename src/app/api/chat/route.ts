@@ -2,6 +2,7 @@ import { streamText } from 'ai';
 import { createGroq, GROQ_MODEL } from '@/lib/assistant/model';
 import { SYSTEM_PROMPT } from '@/lib/assistant/prompt';
 import { assistantTools } from '@/lib/assistant/tools';
+import { describeAssistantError } from '@/lib/assistant/errors';
 
 export const maxDuration = 30;
 
@@ -31,14 +32,25 @@ export async function POST(req: Request) {
       system: SYSTEM_PROMPT,
       messages,
       tools: assistantTools,
+      // Groq's free tier is 8,000 tokens per minute and a single multi-step
+      // turn can spend most of it, so a 429 mid-turn is routine rather than
+      // exceptional. The SDK's backoff turns most of those into a pause instead
+      // of a dead turn; the ones it cannot are reported honestly below.
+      maxRetries: 3,
       onError: (error) => {
-        console.error('[chat/route] streamText error:', JSON.stringify(error));
+        console.error('[chat/route] streamText error:', describeAssistantError(error), error);
       },
     });
 
-    return result.toDataStreamResponse();
+    return result.toDataStreamResponse({
+      // Without this the SDK sends the literal string "An error occurred." to
+      // the client for everything, so a rate limit, a bad key and a provider
+      // outage are indistinguishable — and the user is told nothing they can
+      // act on. Our errors carry no secrets; the key never appears in them.
+      getErrorMessage: describeAssistantError,
+    });
   } catch (err) {
     console.error('[chat/route] caught error:', err);
-    return new Response(JSON.stringify({ error: String(err) }), { status: 500 });
+    return new Response(JSON.stringify({ error: describeAssistantError(err) }), { status: 500 });
   }
 }

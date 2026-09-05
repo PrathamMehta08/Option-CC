@@ -6,6 +6,11 @@ import type { Message, ToolInvocation } from 'ai';
 import { MessageSquare, X, Send, Bot, User, Loader2, AlertTriangle, Maximize2, Minimize2, Sparkles, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/ui';
 import { parseCustomFilter, describeFilter, type CustomFilter } from '@/lib/filters';
+import { normalizeDelta } from '@/lib/assistant/normalize';
+import { describeHistory, type ChartRange, type HistoryResponse } from '@/lib/history';
+import { StockChart } from '@/components/screener/StockChart';
+import type { StrategyId } from '@/lib/strategies';
+import type { MobileView } from '@/components/screener/ResultsTable';
 import type { ScreenedOption } from '@/lib/optionChain';
 import { STARTERS } from '@/lib/assistant/starters';
 
@@ -17,7 +22,8 @@ interface LLMChatbotProps {
   setMinMonths: (months: number) => void;
   setMaxMonths: (months: number) => void;
   setDeltaMagnitude: (delta: number) => void;
-  setStrikeFilter: (range: [number, number]) => void;
+  /** Takes an updater too, so applySettings can move one end and keep the other. */
+  setStrikeFilter: React.Dispatch<React.SetStateAction<[number, number]>>;
   addCustomFilter: (filter: CustomFilter) => void;
   addComputedColumn: (input: { id: string; name: string; expression: string }) =>
     { ok: true; column: { name: string; source: string } } | { ok: false; error: string };
@@ -25,9 +31,13 @@ interface LLMChatbotProps {
     key: keyof ScreenedOption | null;
     direction: 'asc' | 'desc' | null;
   }) => void;
-  triggerFetch: () => void;
-  /** A plain-text description of the loaded scan, for the readScreen tool. */
-  readScreen: () => string;
+  setStrategy: (id: StrategyId) => void;
+  setResultsView: (view: MobileView) => void;
+  /**
+   * A description of the loaded scan, for the readScreen tool. Async because it
+   * waits for a scan already on its way rather than reporting "nothing loaded".
+   */
+  readScreen: () => Promise<string>;
 }
 
 export default function LLMChatbot({
@@ -41,7 +51,8 @@ export default function LLMChatbot({
   addCustomFilter,
   addComputedColumn,
   setSortConfig,
-  triggerFetch,
+  setStrategy,
+  setResultsView,
   readScreen,
 }: LLMChatbotProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -51,91 +62,187 @@ export default function LLMChatbot({
   const [showExamples, setShowExamples] = useState(true);
   const [openGroup, setOpenGroup] = useState<string | null>(STARTERS[0].title);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  /**
+   * Charts the assistant has drawn, by tool call id.
+   *
+   * The model gets a sentence describing the move (see describeHistory) and the
+   * user gets the picture; keeping the data here rather than in the message
+   * means the chart is not re-serialised into every later request.
+   */
+  const [charts, setCharts] = useState<Record<string, HistoryResponse>>({});
 
-  const { messages, input, handleInputChange, handleSubmit, status, error, addToolResult, append } = useChat({
+  /**
+   * Run one client-side tool call and say what happened.
+   *
+   * These tools have no `execute` on the server — the model emits the call and
+   * the browser performs it against state the server never sees. The returned
+   * string is what the model is told, so a rejection has to read as a
+   * correction it can act on rather than a silent no-op.
+   *
+   * Lives in useChat's onToolCall rather than an effect over `messages`. The
+   * effect had to re-scan every message on every render to find the calls it
+   * had not run yet, and setting state from inside it is what the React
+   * Compiler rightly objects to.
+   */
+  const runTool = async (
+    toolCallId: string,
+    toolName: string,
+    args: Record<string, never>
+  ): Promise<string> => {
+    const a = args as Record<string, string & number & { [k: string]: unknown }>;
+    switch (toolName) {
+      case 'applySettings': {
+        // One call instead of four round trips. gpt-oss emits a single tool
+        // call per reply, so four setters meant four requests, each re-sending
+        // the prompt and every schema — about 12,000 tokens against a limit of
+        // 8,000 a minute, which is the whole of the "it errors at the end" bug.
+        //
+        // Every field is optional and an omitted one is left alone, so this
+        // cannot clear a setting the user never mentioned.
+        const done: string[] = [];
+        if (a.ticker != null) {
+          const symbol = String(a.ticker).toUpperCase();
+          setTicker(symbol);
+          done.push(`ticker ${symbol}`);
+        }
+        if (a.capital != null) {
+          setCapital(String(a.capital));
+          done.push(`capital $${a.capital}`);
+        }
+        if (a.minMonths != null) setMinMonths(Number(a.minMonths));
+        if (a.maxMonths != null) setMaxMonths(Number(a.maxMonths));
+        if (a.minMonths != null || a.maxMonths != null) {
+          done.push(`months ${a.minMonths ?? 'any'}-${a.maxMonths ?? 'any'}`);
+        }
+        if (a.delta != null) {
+          const magnitude = normalizeDelta(Number(a.delta));
+          setDeltaMagnitude(magnitude);
+          done.push(`delta ${magnitude}`);
+        }
+        if (a.minStrike != null || a.maxStrike != null) {
+          // Only one end may be given, so the other keeps whatever it has
+          // rather than being reset to an arbitrary bound.
+          setStrikeFilter(([low, high]) => [
+            a.minStrike != null ? Number(a.minStrike) : low,
+            a.maxStrike != null ? Number(a.maxStrike) : high,
+          ]);
+          done.push(`strikes $${a.minStrike ?? 'any'}-$${a.maxStrike ?? 'any'}`);
+        }
+        if (a.strategy != null) {
+          setStrategy(String(a.strategy) as StrategyId);
+          done.push(String(a.strategy) === 'covered-call' ? 'covered calls' : 'cash-secured puts');
+        }
+        if (done.length === 0) return 'Nothing to change — no settings were given.';
+        return `Set ${done.join(', ')}. A fresh scan takes a moment — read the screen again before quoting its numbers.`;
+      }
+      case 'setTicker': {
+        const symbol = String(a.ticker).toUpperCase();
+        setTicker(symbol);
+        // No fetch is kicked off here: the ticker is the only thing the app
+        // fetches on, and its own debounced effect owns that.
+        return `Ticker set to ${symbol}. A fresh scan takes a moment — read the screen again before quoting its numbers.`;
+      }
+      case 'setCapital':
+        setCapital(String(a.capital));
+        return `Capital set to $${a.capital}`;
+      case 'setMonthsRange':
+        setMinMonths(Number(a.minMonths));
+        setMaxMonths(Number(a.maxMonths));
+        return `Months range set to ${a.minMonths}–${a.maxMonths}`;
+      case 'setDelta': {
+        // "30 delta" and "0.30 delta" are the same request; see normalizeDelta
+        // for why 1 is left alone.
+        const magnitude = normalizeDelta(Number(a.delta));
+        setDeltaMagnitude(magnitude);
+        return `Delta limit set to ${magnitude}`;
+      }
+      case 'setStrikeRange':
+        setStrikeFilter([Number(a.minStrike), Number(a.maxStrike)]);
+        return `Strike range set to $${a.minStrike}–$${a.maxStrike}`;
+      case 'setSort':
+        setSortConfig(args as never);
+        return `Sorted by ${a.key} ${a.direction}`;
+      case 'setStrategy':
+        setStrategy(String(a.strategy) as StrategyId);
+        return String(a.strategy) === 'covered-call'
+          ? 'Switched to covered calls'
+          : 'Switched to cash-secured puts';
+      case 'setResultsView':
+        setResultsView(String(a.view) as MobileView);
+        return `Results shown as ${a.view}`;
+      case 'addCustomFilter': {
+        // Model output is untrusted data. Validate it against the schema and
+        // report a rejection rather than dropping it silently, so the model can
+        // correct itself and the user can see what happened.
+        const parsed = parseCustomFilter(args);
+        if (!parsed.ok) {
+          return `Filter rejected: ${parsed.error}. Valid fields are the numeric columns; valid operators are gt, gte, lt, lte, eq, between.`;
+        }
+        addCustomFilter(parsed.filter);
+        return `Filter applied — ${describeFilter(parsed.filter)}`;
+      }
+      case 'addComputedColumn': {
+        // The formula is parsed by our own grammar, never executed. A rejection
+        // is reported so the model can fix the expression.
+        const added = addComputedColumn(args as unknown as { id: string; name: string; expression: string });
+        return added.ok
+          ? `Added column "${added.column.name}" = ${added.column.source}, sorted by it`
+          : `Formula rejected: ${added.error}`;
+      }
+      case 'readScreen':
+        // The one tool that hands data back rather than changing state.
+        return await readScreen();
+      case 'showStockChart': {
+        const symbol = String(a.ticker).toUpperCase();
+        const range = String(a.range) as ChartRange;
+        try {
+          const res = await fetch(
+            `/api/history?ticker=${encodeURIComponent(symbol)}&range=${range}`
+          );
+          const json: HistoryResponse & { error?: string } = await res.json();
+          if (json.error) return `Could not load a chart: ${json.error}`;
+          // The user gets the picture; the model gets the shape of the move, so
+          // it can talk about what is on screen instead of inventing it.
+          setCharts((prev) => ({ ...prev, [toolCallId]: json }));
+          return describeHistory(json);
+        } catch {
+          return `Could not load price history for ${symbol}.`;
+        }
+      }
+      default:
+        return `Unknown tool: ${toolName}`;
+    }
+  };
+
+  const { messages, input, handleInputChange, handleSubmit, status, error, append, reload } = useChat({
     api: '/api/chat',
     maxSteps: 5,
+    // Returning a value here registers it as the tool result and lets the SDK
+    // continue the turn, so nothing has to watch the message list for work.
+    onToolCall: async ({ toolCall }) => {
+      try {
+        return await runTool(
+          toolCall.toolCallId,
+          toolCall.toolName,
+          toolCall.args as Record<string, never>
+        );
+      } catch (err) {
+        return `The app could not apply ${toolCall.toolName}: ${
+          err instanceof Error ? err.message : 'unknown error'
+        }`;
+      }
+    },
   });
 
   const isLoading = status === 'submitted' || status === 'streaming';
+  /** Whether there is a turn to retry — reload() re-runs the last user message. */
+  const lastUserMessage = messages.some((m) => m.role === 'user');
 
   /** Send a starter prompt as though the user had typed and submitted it. */
   const send = (text: string) => {
     if (isLoading) return;
     append({ role: 'user', content: text });
   };
-
-
-  // Execute client-side tool calls when they arrive
-  useEffect(() => {
-    let changed = false;
-    for (const message of messages) {
-      if (message.role !== 'assistant') continue;
-      const invocations: ToolInvocation[] | undefined = message.toolInvocations;
-      if (!invocations) continue;
-      for (const inv of invocations) {
-        if (inv.state === 'call') {
-          let result = 'Done';
-          try {
-            if (inv.toolName === 'setTicker') {
-              setTicker(inv.args.ticker.toUpperCase());
-              result = `Ticker set to ${inv.args.ticker.toUpperCase()}`;
-              changed = true;
-            } else if (inv.toolName === 'setCapital') {
-              setCapital(inv.args.capital.toString());
-              result = `Capital set to $${inv.args.capital}`;
-              changed = true;
-            } else if (inv.toolName === 'setMonthsRange') {
-              setMinMonths(inv.args.minMonths);
-              setMaxMonths(inv.args.maxMonths);
-              result = `Months range set to ${inv.args.minMonths}–${inv.args.maxMonths}`;
-              changed = true;
-            } else if (inv.toolName === 'setDelta') {
-              const magnitude = Math.abs(inv.args.delta);
-              setDeltaMagnitude(magnitude);
-              result = `Delta limit set to ${magnitude}`;
-              changed = true;
-            } else if (inv.toolName === 'setStrikeRange') {
-              setStrikeFilter([inv.args.minStrike, inv.args.maxStrike]);
-              result = `Strike range set to $${inv.args.minStrike}–$${inv.args.maxStrike}`;
-              changed = true;
-            } else if (inv.toolName === 'addCustomFilter') {
-              // Model output is untrusted data. Validate it against the schema
-              // and report a rejection rather than dropping it silently, so the
-              // model can correct itself and the user can see what happened.
-              const parsed = parseCustomFilter(inv.args);
-              if (parsed.ok) {
-                addCustomFilter(parsed.filter);
-                result = `Filter applied — ${describeFilter(parsed.filter)}`;
-              } else {
-                result = `Filter rejected: ${parsed.error}. Valid fields are the numeric columns; valid operators are gt, gte, lt, lte, eq, between.`;
-              }
-            } else if (inv.toolName === 'addComputedColumn') {
-              // The formula is parsed by our own grammar, never executed. A
-              // rejection is reported so the model can fix the expression.
-              const added = addComputedColumn(inv.args);
-              result = added.ok
-                ? `Added column "${added.column.name}" = ${added.column.source}, sorted by it`
-                : `Formula rejected: ${added.error}`;
-            } else if (inv.toolName === 'readScreen') {
-              // The one tool that hands data back rather than changing state.
-              result = readScreen();
-            } else if (inv.toolName === 'setSort') {
-              setSortConfig(inv.args);
-              result = `Sorted by ${inv.args.key} ${inv.args.direction}`;
-            }
-          } catch {
-            result = 'Error applying tool';
-          }
-          addToolResult({ toolCallId: inv.toolCallId, result });
-        }
-      }
-    }
-    if (changed) {
-      triggerFetch();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -334,13 +441,23 @@ export default function LLMChatbot({
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${m.role === 'user' ? 'bg-bg-3 text-fg' : 'bg-bg-3 text-fg-soft'}`}>
                   {m.role === 'user' ? <User size={16} /> : <Bot size={16} />}
                 </div>
-                <div className={`flex flex-col gap-1 max-w-[75%] ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                <div className={cn(
+                  'flex flex-col gap-1',
+                  m.role === 'user' ? 'items-end max-w-[75%]' : 'items-start max-w-[90%] w-full'
+                )}>
                   {m.content && (
                     <div className={`p-3 rounded-lg text-sm leading-relaxed ${m.role === 'user' ? 'bg-bg-3 text-fg rounded-tr-sm' : 'bg-bg-3 border border-line text-fg rounded-tl-sm'}`}>
                       {m.content}
                     </div>
                   )}
-                  {invocations?.map((inv) => (
+                  {invocations?.map((inv) =>
+                    charts[inv.toolCallId] ? (
+                      // The chart is the result; a "✓ chart shown" chip beside
+                      // it would say less than the picture does.
+                      <div key={inv.toolCallId} className="w-full min-w-[260px]">
+                        <StockChart history={charts[inv.toolCallId]} />
+                      </div>
+                    ) : (
                     <div key={inv.toolCallId} className="bg-bg-3 border border-line rounded-lg p-2 text-xs text-fg-soft flex items-center gap-2">
                       {inv.state === 'result' ? (
                         /^(Filter|Formula) rejected:/.test(String(inv.result)) ? (
@@ -361,7 +478,8 @@ export default function LLMChatbot({
                         </>
                       )}
                     </div>
-                  ))}
+                    )
+                  )}
                 </div>
               </div>
             );
@@ -379,8 +497,21 @@ export default function LLMChatbot({
             </div>
           )}
           {error && (
-            <div className="p-3 rounded-lg bg-red-900/20 border border-red-800 text-red-400 text-xs">
-              Error: {error.message}
+            <div className="rounded-lg border border-warn/30 bg-warn/10 p-3 space-y-2">
+              <div className="flex items-start gap-2 text-xs text-warn">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span className="leading-relaxed">{error.message}</span>
+              </div>
+              {lastUserMessage && (
+                <button
+                  type="button"
+                  onClick={() => { if (!isLoading) reload(); }}
+                  disabled={isLoading}
+                  className="rounded-md border border-line bg-bg-3 px-2.5 py-1.5 text-[11px] font-bold text-fg-soft transition-colors hover:text-fg disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-a1/60"
+                >
+                  Try again
+                </button>
+              )}
             </div>
           )}
           <div ref={messagesEndRef} />
