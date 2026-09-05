@@ -9,13 +9,19 @@
  *     That surfaced as a failed turn, not a startup error.
  *   - A model that does not do tool calling will happily chat instead, so the
  *     assistant looks like it works and simply never touches the app.
+ *   - Gemini streams a field the strict OpenAI parser rejects, so every tool
+ *     call failed while the SAME endpoint answered non-streaming requests
+ *     perfectly. This check missed that at first because it did not stream.
+ *
+ * It goes through streamText, because streaming is what the app does. A check
+ * that exercises a different code path can pass while the app is broken.
  *
  * This sends one real request with the real tool schemas and reports what came
  * back, including what a turn will cost against the provider's rate limit.
  *
  *   npm run llm:check
  */
-import { generateText } from 'ai';
+import { streamText } from 'ai';
 import { loadEnvLocal } from './env';
 import {
   createLlm,
@@ -67,9 +73,13 @@ async function main() {
     process.exit(1);
   }
 
-  let result: Awaited<ReturnType<typeof generateText>>;
+  const calls: { toolName: string; args: unknown }[] = [];
+  let text = '';
+  let prompt = 0;
+  let completion = 0;
+
   try {
-    result = await generateText({
+    const result = streamText({
       model: createLlm()(llmModel()),
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: PROBE }],
@@ -79,27 +89,42 @@ async function main() {
       // you the wrong thing about your quota.
       maxRetries: 0,
     });
+    // Draining the stream is the point. The failure this exists to catch
+    // happens while PARSING chunks, so a request that is merely accepted
+    // proves nothing.
+    for await (const part of result.fullStream) {
+      if (part.type === 'error') throw part.error;
+      if (part.type === 'text-delta') text += part.textDelta;
+      if (part.type === 'tool-call') calls.push({ toolName: part.toolName, args: part.args });
+    }
+    const usage = await result.usage;
+    prompt = usage?.promptTokens ?? 0;
+    completion = usage?.completionTokens ?? 0;
   } catch (err) {
     console.error(`${RED}✗ The request failed.${RESET}\n  ${describeAssistantError(err)}\n`);
-    // A schema rejection is the one failure that is this app's problem rather
-    // than the provider's, so point at the file that would need to change.
-    if (/schema/i.test(String((err as { message?: string })?.message ?? ''))) {
+    const detail = String((err as { message?: string })?.message ?? '');
+    // A schema rejection is this app's problem rather than the provider's, so
+    // point at the file that would need to change.
+    if (/schema/i.test(detail)) {
       console.error(
         `  ${DIM}This provider validates tool schemas differently. The tool\n` +
           `  definitions are in src/lib/assistant/tools.ts.${RESET}\n`
       );
     }
+    if (/type validation/i.test(detail)) {
+      console.error(
+        `  ${DIM}This provider streams a shape the parser rejects. See createLlm\n` +
+          `  in src/lib/assistant/model.ts, which picks the lenient provider for\n` +
+          `  endpoints that only imitate OpenAI.${RESET}\n`
+      );
+    }
     process.exit(1);
   }
-
-  const calls = result.toolCalls ?? [];
-  const prompt = result.usage?.promptTokens ?? 0;
-  const completion = result.usage?.completionTokens ?? 0;
 
   if (calls.length === 0) {
     console.error(
       `${RED}✗ The model answered without calling a tool.${RESET}\n` +
-        `  It replied: ${JSON.stringify((result.text ?? '').slice(0, 120))}\n\n` +
+        `  It replied: ${JSON.stringify(text.slice(0, 120))}\n\n` +
         `  ${DIM}The assistant can only drive the screener through tool calls, so this\n` +
         `  model will chat but change nothing. Pick one that supports them.${RESET}\n`
     );
@@ -119,17 +144,33 @@ async function main() {
     );
   }
 
-  const perTurn = prompt * STEPS_PER_TURN + completion;
+  // Not every provider reports usage over a stream — Gemini's compatibility
+  // layer does not — so say so rather than printing NaN as if it meant zero.
+  if (Number.isFinite(prompt) && prompt > 0) {
+    const perTurn = prompt * STEPS_PER_TURN + completion;
+    console.log(
+      `\n${BOLD}Cost${RESET}\n` +
+        `  ${prompt} prompt + ${completion} completion tokens for this one step.\n` +
+        `  A full turn is about ${STEPS_PER_TURN} steps, so roughly ${DIM}${perTurn.toLocaleString()}${RESET} tokens.\n` +
+        `  ${DIM}Every step re-sends the system prompt and all tool schemas; that fixed\n` +
+        `  cost, not the length of your question, is what a turn is made of.${RESET}\n` +
+        `  Compare that against this provider's tokens-per-minute limit.\n` +
+        `  ${DIM}A cap of 8,000/min does not fit one turn.${RESET}\n`
+    );
+  } else {
+    console.log(
+      `\n${BOLD}Cost${RESET}\n` +
+        `  ${DIM}This provider does not report token usage over a stream, so the\n` +
+        `  per-turn cost cannot be measured here. A turn is ${STEPS_PER_TURN} requests.${RESET}\n`
+    );
+  }
+
   console.log(
-    `\n${BOLD}Cost${RESET}\n` +
-      `  ${prompt} prompt + ${completion} completion tokens for this one step.\n` +
-      `  A full turn is about ${STEPS_PER_TURN} steps, so roughly ${DIM}${perTurn.toLocaleString()}${RESET} tokens.\n` +
-      `  ${DIM}Every step re-sends the system prompt and all tool schemas; that fixed\n` +
-      `  cost, not the length of your question, is what a turn is made of.${RESET}\n`
-  );
-  console.log(
-    `  Check this provider's tokens-per-minute limit against that number.\n` +
-      `  ${DIM}A cap of 8,000/min fits about one turn a minute.${RESET}\n`
+    `${BOLD}Quota${RESET}\n` +
+      `  ${DIM}Free tiers cap requests per DAY as well as per minute, and the cap is\n` +
+      `  per model. Google's newest aliases are the tightest: gemini-flash-latest\n` +
+      `  resolved to a model allowing 20 requests a day, which is about six\n` +
+      `  questions. Check the limit for the exact model id you pin.${RESET}\n`
   );
 
   console.log(`${GREEN}Ready.${RESET}\n`);

@@ -1,4 +1,5 @@
 import { createOpenAI } from '@ai-sdk/openai';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 
 /**
  * Which LLM the assistant talks to.
@@ -79,11 +80,39 @@ export function providerName(baseUrl = llmBaseUrl()): string {
   }
 }
 
-/** Build the provider. Everything is resolved now, not at import. */
+/** Whether the endpoint is OpenAI's own, rather than something imitating it. */
+function isOpenAiProper(baseUrl = llmBaseUrl()): boolean {
+  try {
+    return new URL(baseUrl).hostname.endsWith('openai.com');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Build the provider. Everything is resolved now, not at import.
+ *
+ * Two providers, for one reason: `@ai-sdk/openai` validates streamed chunks
+ * against OpenAI's exact schema, and the imitations are not exact. Gemini's
+ * compatibility layer puts an `extra_content` field inside tool-call deltas,
+ * and the strict parser rejects the whole stream — "Type validation failed" on
+ * every tool call, while non-streaming requests to the same endpoint work fine.
+ * That is a nasty failure to debug, because the endpoint looks healthy.
+ *
+ * `@ai-sdk/openai-compatible` exists for exactly this and tolerates the extra
+ * fields, so everything except OpenAI itself goes through it.
+ */
 export function createLlm(apiKey = llmApiKey()) {
-  return createOpenAI({
-    baseURL: llmBaseUrl(),
-    // A local server ignores this, but the SDK insists on a string.
-    apiKey: apiKey ?? 'local',
+  const baseURL = llmBaseUrl();
+  // A local server ignores the key, but the SDK insists on a string.
+  const key = apiKey ?? 'local';
+
+  if (isOpenAiProper(baseURL)) {
+    return createOpenAI({ baseURL, apiKey: key });
+  }
+  return createOpenAICompatible({
+    name: providerName(baseURL),
+    baseURL,
+    headers: { Authorization: `Bearer ${key}` },
   });
 }
