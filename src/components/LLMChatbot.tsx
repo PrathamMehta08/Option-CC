@@ -306,7 +306,10 @@ export default function LLMChatbot({
               : [Number(a.filterValue)];
           const parsed = parseCustomFilter({
             id: `f${Date.now().toString(36)}`,
-            name: `${a.filterField} ${op} ${value.join('-')}`,
+            // Named for the column it constrains. Naming it after its own
+            // condition printed the chip twice over: "premiumSharePct gte 15"
+            // beside "premiumSharePct >= 15".
+            name: cardColumns[String(a.filterField)]?.label ?? String(a.filterField),
             mode: 'and',
             conditions: [{ field: String(a.filterField), op, value }],
           });
@@ -321,7 +324,15 @@ export default function LLMChatbot({
         // Reported last, though it was applied first: the chip reads better
         // starting from the ticker.
         if (strategyLabel) done.push(strategyLabel);
-        if (done.length === 0) return 'Nothing to change — no settings were given.';
+        if (done.length === 0) {
+          // Not a failure. The model calls this with everything null when it
+          // wants to look rather than change, and answering with a rejection
+          // taught it to try again — three warning triangles in a row saying
+          // nothing happened, which is true and useless. Hand back the screen.
+          const current = await readScreen();
+          lastSummary.current = current;
+          return `No settings changed. The current screen:\n\n${current}`;
+        }
         // Hand back the resulting screen rather than making the model ask
         // for it. A question used to cost three requests — apply, read,
         // answer — and each one re-sends the whole prompt and toolset. Waiting

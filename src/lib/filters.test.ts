@@ -6,6 +6,7 @@ import {
   applyFilters,
   describeFilter,
   describeCondition,
+  filterFields,
   FILTER_OPS,
   type CustomFilter,
   type FilterCondition,
@@ -290,5 +291,32 @@ describe('describe helpers', () => {
       conditions: [condition('iv', 'gt', [50]), condition('volume', 'gte', [100])],
     };
     expect(describeFilter(filter)).toBe('iv > 50 or volume ≥ 100');
+  });
+});
+
+describe('which filter replaces which', () => {
+  const filter = (id: string, fields: string[]): CustomFilter => ({
+    id,
+    name: id,
+    mode: 'and',
+    conditions: fields.map((field) => ({ field, op: 'gt', value: [1] })) as CustomFilter['conditions'],
+  });
+
+  it('gives two filters on the same column the same signature', () => {
+    // "IV above 40" then "make that 30" must not both be in force; ANDed, the
+    // stricter one silently wins and the request appears to do nothing.
+    expect(filterFields(filter('a', ['iv']))).toBe(filterFields(filter('b', ['iv'])));
+  });
+
+  it('separates filters on different columns', () => {
+    expect(filterFields(filter('a', ['iv']))).not.toBe(filterFields(filter('b', ['delta'])));
+  });
+
+  it('ignores the order the columns were written in', () => {
+    expect(filterFields(filter('a', ['iv', 'delta']))).toBe(filterFields(filter('b', ['delta', 'iv'])));
+  });
+
+  it('collapses a column named twice, as a range does', () => {
+    expect(filterFields(filter('a', ['iv', 'iv']))).toBe('iv');
   });
 });

@@ -38,7 +38,9 @@ describe('what a tool call looks like to the user', () => {
       ticker: null, capital: null, delta: null, minMonths: null,
       maxMonths: null, minStrike: null, maxStrike: null, strategy: null,
     };
-    expect(describeToolCall('applySettings', allNull).text).toBe('No settings changed');
+    // Nothing set means it looked rather than changed. Saying `no settings
+    // changed` read as a failure, and the model answered it by trying again.
+    expect(describeToolCall('applySettings', allNull).text).toBe('Read the screen');
   });
 
   it('surfaces a rejection verbatim, because there the message is the point', () => {

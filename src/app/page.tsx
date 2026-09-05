@@ -32,7 +32,7 @@ import {
   type WantedSettings,
 } from '@/lib/scanSettled';
 import { screenLoadedChain } from '@/lib/screen';
-import { matchesFilter, describeFilter, type CustomFilter } from '@/lib/filters';
+import { matchesFilter, describeFilter, filterFields, type CustomFilter } from '@/lib/filters';
 import { compileFormula, type ComputedColumn } from '@/lib/formula';
 import { describeScreen } from '@/lib/assistant/screenSummary';
 
@@ -1216,7 +1216,16 @@ export default function OptionAnalyzer() {
         setMaxMonths={setMonthsTo}
         setDeltaMagnitude={setDeltaMagnitude}
         setStrikeFilter={setStrikeFilter}
-        addCustomFilter={(filter) => setCustomFilters(prev => [...prev.filter(f => f.id !== filter.id), filter])}
+        addCustomFilter={(filter) =>
+          setCustomFilters((prev) => [
+            // Replaced by the columns it covers, not just by id: every call
+            // mints a fresh id, so asking twice stacked four identical chips,
+            // and a second thought ("IV above 40", then 30) left both in force
+            // with the stricter one silently winning.
+            ...prev.filter((f) => f.id !== filter.id && filterFields(f) !== filterFields(filter)),
+            filter,
+          ])
+        }
         clearCustomFilters={clearCustomFilters}
         addComputedColumn={addComputedColumn}
         setSortConfig={setGlobalSortConfig}

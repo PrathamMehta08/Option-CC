@@ -21,7 +21,7 @@ export interface ToolChip {
 
 /** Rejections and failures are the one case where the result IS the message. */
 const SURFACE_VERBATIM =
-  /^(Filter rejected|Formula rejected|Could not|No contract|No column|Unknown tool|The app could not|Nothing to change)/;
+  /^(Filter rejected|Formula rejected|Could not|No contract|No column|Unknown tool|The app could not)/;
 
 /**
  * Rejections the assistant is expected to notice and fix inside the same turn.
@@ -145,7 +145,9 @@ export function describeToolCall(
         const high = args.filterValueHigh != null ? `-${args.filterValueHigh}` : '';
         parts.push(`filter ${args.filterField} ${symbols[op] ?? op} ${args.filterValue}${high}`);
       }
-      return { tone: 'done', text: parts.length ? `Set ${parts.join(', ')}` : 'No settings changed' };
+      // Nothing set means it looked rather than changed, which is what the
+      // chip should say — not "no settings changed", which reads as a failure.
+      return { tone: 'done', text: parts.length ? `Set ${parts.join(', ')}` : 'Read the screen' };
     }
     case 'setTicker':
       return { tone: 'done', text: `Ticker ${String(args.ticker).toUpperCase()}` };

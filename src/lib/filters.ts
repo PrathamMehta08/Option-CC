@@ -151,3 +151,17 @@ export function parseCustomFilter(input: unknown): FilterParseResult {
     .join('; ');
   return { ok: false, error: detail || 'Filter did not match the expected shape.' };
 }
+
+/**
+ * The columns a filter constrains, sorted and joined.
+ *
+ * Filters were only ever replaced by id, and every call mints a fresh one — so
+ * asking twice for the same thing stacked four identical "premiumSharePct ≥ 15"
+ * chips on the screen. Worse, a second thought ("IV above 40" then "make that
+ * 30") ANDed the two and left the stricter one silently in charge.
+ *
+ * A filter over the same columns replaces the one that was there.
+ */
+export function filterFields(filter: CustomFilter): string {
+  return [...new Set(filter.conditions.map((c) => c.field))].sort().join(',');
+}
