@@ -49,7 +49,9 @@ const TPM_SAFETY = 0.85;
 const MAX_RETRIES = 8;
 
 // Matches LLMChatbot's useChat({ maxSteps: 5 }).
-const MAX_STEPS = 5;
+// The client runs useChat with maxSteps 6. Five here quietly measured a
+// shorter turn than the app allows.
+const MAX_STEPS = 6;
 
 // ---------------------------------------------------------------- environment
 
@@ -263,7 +265,12 @@ async function callModel(
         // rest on auto. Without that here the harness measured a freedom the
         // app does not give the model.
         toolChoice,
+        // The route''s ceiling. Without it the harness let a turn run longer
+        // than the app ever would, and never saw the truncation the app can.
+        maxTokens: 1600,
         // Determinism: temperature 0, and a fixed seed since Groq exposes one.
+        // The route leaves both alone — this is the one place the harness
+        // deliberately differs, because a moving score measures nothing.
         temperature: 0,
         seed: 7,
         maxRetries: 0, // we do our own, so 429s are visible and paced
