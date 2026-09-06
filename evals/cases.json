@@ -1231,7 +1231,7 @@
       },
       "alternatives": [
         {
-          "tool": "setDelta",
+          "tool": "applySettings",
           "args": {
             "delta": 0.5
           }
@@ -1240,7 +1240,7 @@
           "tool": "askUser"
         }
       ],
-      "notes": "delta is capped at 1 by the schema. Either reject, or read 50 as a 50 delta = 0.5."
+      "notes": "delta above 1 is read as hundredths, so 50 is a 50 delta = 0.5. Rejecting it, asking, or applying 0.5 are all defensible."
     },
     {
       "id": "adv-column-through-filter",
