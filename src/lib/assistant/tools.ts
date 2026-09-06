@@ -119,7 +119,9 @@ export const TOOL_PARAMETERS = {
     filterValue: z
       .number()
       .nullish()
-      .describe('The number to compare against; the low end when filterOp is between'),
+      .describe(
+        'The number to compare against, in the column\u2019s own units: lastPrice and strike are dollars ($2 is 2), iv, moneyness and the return columns are percentages (40 is 40%), delta is 0-1. The low end when filterOp is between'
+      ),
     filterValueHigh: z
       .number()
       .nullish()

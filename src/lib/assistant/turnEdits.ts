@@ -24,7 +24,9 @@ export function newTurn(): TurnEdits {
 export interface RetuneCheck {
   /** Settings being changed a second time, to a different value. */
   retuned: string[];
-  /** The message for the model, when there are any. */
+  /** Every setting given is already in force: the call changes nothing. */
+  noChange: boolean;
+  /** The message for the model, when there is something to say. */
   message?: string;
 }
 
@@ -50,6 +52,7 @@ export function checkRetune(turn: TurnEdits, changes: Record<string, unknown>): 
   if (retuned.length > 0) {
     return {
       retuned,
+      noChange: false,
       message:
         `Already set ${retuned
           .map((f) => `${f} to ${String(turn.applied.get(f))}`)
@@ -59,8 +62,23 @@ export function checkRetune(turn: TurnEdits, changes: Record<string, unknown>): 
     };
   }
 
-  for (const [field, value] of Object.entries(changes)) {
-    if (value != null) turn.applied.set(field, value);
+  // Every value given is the one already in force. Applying it again produces
+  // an identical screen and spends a step: asked for "nothing above a 15
+  // delta", the model set delta 0.15 three times over.
+  const given = Object.entries(changes).filter(([, value]) => value != null);
+  const noChange =
+    given.length > 0 && given.every(([field, value]) => same(turn.applied.get(field), value));
+
+  for (const [field, value] of given) turn.applied.set(field, value);
+
+  if (noChange) {
+    return {
+      retuned: [],
+      noChange: true,
+      message:
+        'Those settings are already in force from earlier in this turn, so nothing changed. ' +
+        'Answer from the screen you were given rather than applying them again.',
+    };
   }
-  return { retuned };
+  return { retuned: [], noChange: false };
 }

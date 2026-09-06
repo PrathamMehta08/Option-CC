@@ -227,6 +227,8 @@ export default function LLMChatbot({
           maxStrikePctOfSpot: a.maxStrikePctOfSpot,
           strategy: a.strategy,
         });
+        // A no-op call and a re-tune both end the same way: nothing is applied
+        // and the model is told why, rather than the screen being rebuilt.
         if (retune.message) return retune.message;
 
         const done: string[] = [];

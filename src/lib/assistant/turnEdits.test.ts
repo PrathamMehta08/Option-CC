@@ -60,3 +60,34 @@ describe('changing a setting twice in one turn', () => {
     expect(checkRetune(turn, { delta: 0.30 }).retuned).toEqual([]);
   });
 });
+
+describe('a call that changes nothing', () => {
+  it('is reported as a no-op rather than applied again', () => {
+    // "nothing above a 15 delta please" produced applySettings delta 0.15
+    // three times over. Each one rebuilt the screen and spent a step.
+    const turn = newTurn();
+    checkRetune(turn, { delta: 0.15 });
+    const again = checkRetune(turn, { delta: 0.15 });
+    expect(again.noChange).toBe(true);
+    expect(again.retuned).toEqual([]);
+    expect(again.message).toContain('already in force');
+  });
+
+  it('is not a no-op when any part of it is new', () => {
+    const turn = newTurn();
+    checkRetune(turn, { delta: 0.15 });
+    const more = checkRetune(turn, { delta: 0.15, ticker: 'NVDA' });
+    expect(more.noChange).toBe(false);
+    expect(more.message).toBeUndefined();
+  });
+
+  it('is not a no-op on the first call', () => {
+    expect(checkRetune(newTurn(), { delta: 0.15 }).noChange).toBe(false);
+  });
+
+  it('is not a no-op when nothing was given at all', () => {
+    // An empty call means "show me the screen", which the app answers with the
+    // screen — not with a complaint about repetition.
+    expect(checkRetune(newTurn(), { delta: null }).noChange).toBe(false);
+  });
+});

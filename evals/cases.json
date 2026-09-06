@@ -739,6 +739,12 @@
             "filterOp": "gte",
             "filterValue": 5
           }
+        },
+        {
+          "tool": "applySettings",
+          "args": {
+            "minStrikePctOfSpot": 105
+          }
         }
       ],
       "notes": "Moneyness is a signed percentage distance from spot."
